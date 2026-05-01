@@ -32,6 +32,12 @@ sources:
           - name: match_id
             tests: [unique, not_null]
 
+      - name: dim_competitions
+        description: "Competition dimension"
+        columns:
+          - name: competition_id
+            tests: [unique, not_null]
+
 models:
   - name: stg_events
     description: "Cleaned event staging view — filters nulls, casts types"
