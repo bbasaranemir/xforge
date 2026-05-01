@@ -1,0 +1,110 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install linting tools
+        run: pip install black==24.3.0 flake8==7.0.0 isort==5.13.2
+
+      - name: black
+        run: black --check scripts/ dags/ config/
+
+      - name: isort
+        run: isort --check-only scripts/ dags/ config/
+
+      - name: flake8
+        run: flake8 scripts/ dags/ config/ --max-line-length=100 --extend-ignore=E203,W503
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-22.04
+    needs: lint
+    services:
+      postgres:
+        image: postgis/postgis:15-3.4
+        env:
+          POSTGRES_USER:     analytics
+          POSTGRES_PASSWORD: analytics_test
+          POSTGRES_DB:       football_db_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      POSTGRES_USER:     analytics
+      POSTGRES_PASSWORD: analytics_test
+      POSTGRES_DB:       football_db_test
+      POSTGRES_HOST:     localhost
+      POSTGRES_PORT:     "5432"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-cov
+
+      - name: Apply schema
+        run: |
+          PGPASSWORD=analytics_test psql -h localhost -U analytics -d football_db_test \
+            -f scripts/init/01_schema.sql
+
+      - name: Run tests
+        run: pytest tests/ -v --cov=scripts --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+        continue-on-error: true
+
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-22.04
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /opt/enterprise_football_engine
+            git pull origin main
+            cp .env.production .env
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker compose exec -T airflow-scheduler airflow dags unpause ingestion_pipeline
+            docker compose exec -T airflow-scheduler airflow dags unpause ml_training
+            echo "Deploy complete: $(date)"

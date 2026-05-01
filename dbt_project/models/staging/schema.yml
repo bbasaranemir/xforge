@@ -1,0 +1,46 @@
+version: 2
+
+sources:
+  - name: public
+    schema: public
+    tables:
+      - name: fact_events
+        description: "Partitioned event table — all StatsBomb on-ball actions"
+        columns:
+          - name: event_id
+            tests: [not_null]
+          - name: competition_id
+            tests: [not_null]
+          - name: match_id
+            tests: [not_null]
+
+      - name: dim_players
+        description: "Player dimension"
+        columns:
+          - name: player_id
+            tests: [unique, not_null]
+
+      - name: dim_teams
+        description: "Team dimension"
+        columns:
+          - name: team_id
+            tests: [unique, not_null]
+
+      - name: dim_matches
+        description: "Match dimension"
+        columns:
+          - name: match_id
+            tests: [unique, not_null]
+
+models:
+  - name: stg_events
+    description: "Cleaned event staging view — filters nulls, casts types"
+    columns:
+      - name: event_id
+        tests: [not_null]
+
+  - name: stg_passes
+    description: "Pass subset with xP features pre-computed"
+
+  - name: stg_shots
+    description: "Shot subset with goal flag"

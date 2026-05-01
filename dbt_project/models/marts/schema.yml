@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: mart_player_metrics
+    description: "Per-player aggregated passing and xT/xP metrics"
+    columns:
+      - name: player_id
+        tests: [unique, not_null]
+
+  - name: mart_team_summary
+    description: "Per-team action volume and threat metrics"
+    columns:
+      - name: team_id
+        tests: [unique, not_null]
+
+  - name: mart_match_summary
+    description: "Per-match scoreline, action counts, and total xT"
+    columns:
+      - name: match_id
+        tests: [unique, not_null]
+
+  - name: mart_competition_leaderboard
+    description: "Cross-competition player xT leaderboard"

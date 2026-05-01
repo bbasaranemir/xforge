@@ -1,0 +1,143 @@
+version: "3.8"
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.1-python3.10
+  env_file: .env
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+    AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
+    AIRFLOW__SMTP__SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+    AIRFLOW__SMTP__SMTP_PORT: ${SMTP_PORT:-587}
+    AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER}
+    AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_USER}
+    AIRFLOW__SMTP__SMTP_STARTTLS: "true"
+    _PIP_ADDITIONAL_REQUIREMENTS: >-
+      statsbombpy==1.18.0 pandas==2.1.4 numpy==1.26.3
+      psycopg2-binary==2.9.9
+      dbt-postgres==1.7.4 scikit-learn==1.4.0 xgboost==2.0.3
+      scipy==1.12.0 mplsoccer==1.2.4 matplotlib==3.8.2
+      weasyprint==60.2 joblib==1.3.2 requests==2.31.0
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./scripts:/opt/airflow/scripts
+    - ./dbt_project:/opt/airflow/dbt_project
+    - ./reports:/opt/airflow/reports
+    - airflow_logs:/opt/airflow/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - analytics_net
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    platform: linux/amd64
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    mem_limit: 1500m
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-analytics}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - analytics_net
+
+  pgadmin:
+    image: dpage/pgadmin4:8.3
+    platform: linux/amd64
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    mem_limit: 256m
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - analytics_net
+
+  airflow-init:
+    <<: *airflow-common
+    mem_limit: 512m
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db init &&
+        airflow db upgrade &&
+        airflow users create \
+          --username ${AIRFLOW_USER:-admin} \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email ${AIRFLOW_EMAIL:-admin@example.com} \
+          --password ${AIRFLOW_PASSWORD:-admin}
+    restart: on-failure
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    mem_limit: 1g
+    ports:
+      - "8080:8080"
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    mem_limit: 1g
+    restart: always
+
+  superset:
+    image: apache/superset:3.1.0
+    platform: linux/amd64
+    env_file: .env
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SUPERSET_LOAD_EXAMPLES: "no"
+      PYTHONPATH: /app/pythonpath
+    ports:
+      - "8088:8088"
+    mem_limit: 1g
+    volumes:
+      - superset_data:/app/superset_home
+      - ./config/superset_config.py:/app/pythonpath/superset_config.py
+    depends_on:
+      - postgres
+    networks:
+      - analytics_net
+    command: >-
+      /bin/sh -c "
+        superset db upgrade &&
+        superset fab create-admin --username admin --firstname Admin --lastname User --email admin@superset.com --password admin123 &&
+        superset init &&
+        superset run -h 0.0.0.0 -p 8088
+      "
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  airflow_logs:
+  superset_data:
+
+networks:
+  analytics_net:
+    driver: bridge
