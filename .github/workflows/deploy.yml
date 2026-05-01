@@ -39,7 +39,7 @@ jobs:
     needs: lint
     services:
       postgres:
-        image: postgis/postgis:15-3.4
+        image: postgres:15-alpine
         env:
           POSTGRES_USER:     analytics
           POSTGRES_PASSWORD: analytics_test
@@ -84,10 +84,60 @@ jobs:
           files: ./coverage.xml
         continue-on-error: true
 
+  dbt-check:
+    name: dbt Compile Check
+    runs-on: ubuntu-22.04
+    needs: lint
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER:     analytics
+          POSTGRES_PASSWORD: analytics_test
+          POSTGRES_DB:       football_db_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      POSTGRES_USER:     analytics
+      POSTGRES_PASSWORD: analytics_test
+      POSTGRES_DB:       football_db_test
+      POSTGRES_HOST:     localhost
+      POSTGRES_PORT:     "5432"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dbt
+        run: pip install dbt-postgres==1.7.4
+
+      - name: Apply schema
+        run: |
+          PGPASSWORD=analytics_test psql -h localhost -U analytics -d football_db_test \
+            -f scripts/init/01_schema.sql
+
+      - name: dbt debug
+        working-directory: dbt_project
+        run: dbt debug --profiles-dir .
+
+      - name: dbt compile
+        working-directory: dbt_project
+        run: dbt compile --profiles-dir .
+
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-22.04
-    needs: test
+    needs: [test, dbt-check]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -104,7 +154,7 @@ jobs:
             git pull origin main
             cp .env.production .env
             docker compose pull
-            docker compose up -d --remove-orphans
+            docker compose up -d --build --remove-orphans
             docker compose exec -T airflow-scheduler airflow dags unpause ingestion_pipeline
             docker compose exec -T airflow-scheduler airflow dags unpause ml_training
             echo "Deploy complete: $(date)"

@@ -126,11 +126,62 @@ services:
         superset run -h 0.0.0.0 -p 8088
       "
 
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    platform: linux/amd64
+    ports:
+      - "9090:9090"
+    mem_limit: 256m
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    networks:
+      - analytics_net
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    platform: linux/amd64
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    mem_limit: 128m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - analytics_net
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    platform: linux/amd64
+    ports:
+      - "3000:3000"
+    mem_limit: 256m
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/pipeline-overview.json
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+      - postgres
+    networks:
+      - analytics_net
+
 volumes:
   postgres_data:
   pgadmin_data:
   airflow_logs:
   superset_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   analytics_net:

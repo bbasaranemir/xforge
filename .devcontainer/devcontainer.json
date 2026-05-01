@@ -1,11 +1,13 @@
 {
   "name": "Enterprise Football Engine",
   "postStartCommand": "docker compose up -d",
-  "forwardPorts": [8080, 8088, 5050, 5432],
+  "forwardPorts": [8080, 8088, 3000, 5050, 5432, 9090],
   "portsAttributes": {
     "8080": {"label": "Airflow"},
     "8088": {"label": "Superset"},
+    "3000": {"label": "Grafana"},
     "5050": {"label": "pgAdmin"},
-    "5432": {"label": "PostgreSQL"}
+    "5432": {"label": "PostgreSQL"},
+    "9090": {"label": "Prometheus"}
   }
 }

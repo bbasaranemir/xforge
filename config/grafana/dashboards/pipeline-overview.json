@@ -1,0 +1,137 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Total Matches Ingested",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS total FROM dim_matches;",
+        "format": "table"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 500 },
+              { "color": "green", "value": 1000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Total Events",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS total FROM fact_events;",
+        "format": "table"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 100000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Competitions",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS total FROM dim_competitions;",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Players",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS total FROM dim_players;",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Matches by Competition",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT c.competition_name, COUNT(m.match_id) AS matches FROM dim_matches m JOIN dim_competitions c ON m.competition_id = c.competition_id GROUP BY c.competition_name ORDER BY matches DESC LIMIT 15;",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Events by Type (Top 10)",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT event_type, COUNT(*) AS count FROM fact_events GROUP BY event_type ORDER BY count DESC LIMIT 10;",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Ingestion Timeline (matches per day)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT im.ingested_at::date AS time, COUNT(*) AS matches FROM ingested_matches im GROUP BY 1 ORDER BY 1;",
+        "format": "time_series"
+      }]
+    },
+    {
+      "title": "Database Size (MB)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 20 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT pg_database_size('football_analytics') / 1024 / 1024 AS size_mb;",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Partitions Count",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 20 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS partitions FROM pg_inherits WHERE inhparent = 'fact_events'::regclass;",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "xT Surface Coverage",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 20 },
+      "datasource": "PostgreSQL",
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS cells, ROUND(AVG(xt_value)::numeric, 4) AS avg_xt FROM xt_surface;",
+        "format": "table"
+      }]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["football", "pipeline"],
+  "templating": { "list": [] },
+  "time": { "from": "now-7d", "to": "now" },
+  "title": "Football Pipeline Overview",
+  "uid": "football-pipeline-overview"
+}

@@ -1,19 +1,34 @@
+# Environment
 .env
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.pytest_cache/
-.mypy_cache/
-reports/*.pdf
-reports/*.xml
 *.egg-info/
 dist/
 build/
-.DS_Store
-*.log
+.pytest_cache/
+.mypy_cache/
+
+# Reports (generated artifacts)
+reports/*.pdf
+reports/*.xml
+reports/*.joblib
+
+# dbt
 dbt_project/target/
 dbt_project/dbt_packages/
 dbt_project/logs/
-reports/*.joblib
-reports/*.pdf
-reports/*.xml
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage.xml
+htmlcov/
+.coverage
