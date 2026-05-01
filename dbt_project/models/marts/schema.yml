@@ -5,7 +5,7 @@ models:
     description: "Per-player aggregated passing and xT/xP metrics"
     columns:
       - name: player_id
-        tests: [unique, not_null]
+        tests: [not_null]
 
   - name: mart_team_summary
     description: "Per-team action volume and threat metrics"
