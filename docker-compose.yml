@@ -1,5 +1,3 @@
-version: "3.8"
-
 x-airflow-common: &airflow-common
   build:
     context: .
@@ -33,7 +31,7 @@ x-airflow-common: &airflow-common
 
 services:
   postgres:
-    image: postgis/postgis:15-3.4
+    image: postgres:15-alpine
     platform: linux/amd64
     env_file: .env
     environment:

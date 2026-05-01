@@ -1,5 +1,3 @@
--- PostGIS for spatial queries (Voronoi diagrams, pitch zones)
-CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- ─── Dimension Tables ───────────────────────────────────────────────────────
