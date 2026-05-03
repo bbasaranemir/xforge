@@ -105,6 +105,7 @@ def stream_passes_for_prediction(feature_cols: list, model):
                outcome, under_pressure, minute
         FROM fact_events
         WHERE {PASS_WHERE}
+          AND xp_value IS NULL
     """)
     while True:
         rows = cur.fetchmany(WRITE_CHUNK)
