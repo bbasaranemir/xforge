@@ -24,6 +24,8 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+import psycopg2
+import psycopg2.extras
 from sklearn.metrics import log_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sqlalchemy import create_engine, text
@@ -38,32 +40,82 @@ DB_URL = (
     f"/{os.environ['POSTGRES_DB']}"
 )
 
-MODEL_PATH   = "/opt/airflow/reports/xp_model.joblib"
-PITCH_X      = 120.0
-PITCH_Y      = 80.0
-GOAL_CENTER  = (120.0, 40.0)
+MODEL_PATH    = "/opt/airflow/reports/xp_model.joblib"
+PITCH_X       = 120.0
+PITCH_Y       = 80.0
+GOAL_CENTER   = (120.0, 40.0)
+TRAIN_SAMPLE  = 300_000   # rows for training — plenty for a good AUC
+WRITE_CHUNK   = 50_000    # rows per commit when writing predictions
 
 
 def get_engine():
     return create_engine(DB_URL, pool_pre_ping=True)
 
 
+def _conn_params() -> dict:
+    return dict(
+        host=os.environ.get("POSTGRES_HOST", "postgres"),
+        port=int(os.environ.get("POSTGRES_PORT", 5432)),
+        dbname=os.environ["POSTGRES_DB"],
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+    )
+
+
 # ─── Data preparation ─────────────────────────────────────────────────────────
 
-def fetch_passes(engine) -> pd.DataFrame:
-    q = text("""
+PASS_COLS = ["event_id", "location_x", "location_y",
+             "end_location_x", "end_location_y",
+             "outcome", "under_pressure", "minute"]
+
+PASS_WHERE = """
+    event_type = 'Pass'
+    AND location_x     IS NOT NULL
+    AND location_y     IS NOT NULL
+    AND end_location_x IS NOT NULL
+    AND end_location_y IS NOT NULL
+"""
+
+
+def fetch_passes_sample(engine) -> pd.DataFrame:
+    """Load a stratified random sample for training (memory-safe)."""
+    q = text(f"""
         SELECT event_id, location_x, location_y,
                end_location_x, end_location_y,
                outcome, under_pressure, minute
         FROM fact_events
-        WHERE event_type = 'Pass'
-          AND location_x     IS NOT NULL
-          AND location_y     IS NOT NULL
-          AND end_location_x IS NOT NULL
-          AND end_location_y IS NOT NULL
+        WHERE {PASS_WHERE}
+        ORDER BY RANDOM()
+        LIMIT {TRAIN_SAMPLE}
     """)
     with engine.connect() as conn:
-        return pd.read_sql(q, conn)
+        df = pd.read_sql(q, conn)
+    log.info("Training sample loaded: %d passes", len(df))
+    return df
+
+
+def stream_passes_for_prediction(feature_cols: list, model):
+    """Server-side cursor — yields (ids, probas) chunks without RAM spike."""
+    conn = psycopg2.connect(**_conn_params())
+    conn.autocommit = False
+    cur = conn.cursor("xp_pred_cur")
+    cur.execute(f"""
+        SELECT event_id, location_x, location_y,
+               end_location_x, end_location_y,
+               outcome, under_pressure, minute
+        FROM fact_events
+        WHERE {PASS_WHERE}
+    """)
+    while True:
+        rows = cur.fetchmany(WRITE_CHUNK)
+        if not rows:
+            break
+        chunk = pd.DataFrame(rows, columns=PASS_COLS)
+        X, _, ids, _ = build_features(chunk)
+        probas = model.predict_proba(X)[:, 1]
+        yield ids, probas
+    cur.close()
+    conn.close()
 
 
 def build_features(df: pd.DataFrame) -> tuple:
@@ -154,33 +206,39 @@ def save_model(engine, model, metrics: dict, feature_cols: list) -> None:
     log.info("xP model saved: %s", MODEL_PATH)
 
 
-def write_xp_values(engine, ids: np.ndarray, probas: np.ndarray) -> None:
-    rows = [{"xp": round(float(p), 6), "eid": str(i)} for i, p in zip(ids, probas)]
-    with engine.begin() as conn:
-        conn.execute(
-            text("UPDATE fact_events SET xp_value = :xp WHERE event_id = :eid"),
-            rows,
-        )
-    log.info("Updated xp_value for %d passes", len(rows))
+def write_xp_values_chunked(engine, model, feature_cols: list) -> None:
+    """Stream all passes, predict in chunks, write with individual commits."""
+    total = 0
+    for ids, probas in stream_passes_for_prediction(feature_cols, model):
+        rows = [{"xp": round(float(p), 6), "eid": str(i)}
+                for i, p in zip(ids, probas)]
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE fact_events SET xp_value = :xp WHERE event_id = :eid"),
+                rows,
+            )
+        total += len(rows)
+        log.info("xP written: %d / ~total (chunk committed)", total)
+    log.info("xP write complete — %d passes updated", total)
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 def run() -> None:
-    engine  = get_engine()
-    df      = fetch_passes(engine)
+    engine = get_engine()
 
+    # ── Phase 1: Train on a memory-safe sample ────────────────────────────────
+    df = fetch_passes_sample(engine)
     if len(df) < 500:
         log.warning("Insufficient pass data (%d rows); skipping xP training.", len(df))
         return
 
-    X, y, ids, feature_cols = build_features(df)
-    model, metrics           = train(X, y)
-
+    X, y, _, feature_cols = build_features(df)
+    model, metrics         = train(X, y)
     save_model(engine, model, metrics, feature_cols)
 
-    probas = model.predict_proba(X)[:, 1]
-    write_xp_values(engine, ids, probas)
+    # ── Phase 2: Predict + write all passes in chunks (no OOM) ───────────────
+    write_xp_values_chunked(engine, model, feature_cols)
 
     log.info("xP modelling complete.")
 
