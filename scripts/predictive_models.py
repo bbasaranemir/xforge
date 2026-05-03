@@ -17,6 +17,7 @@ Trained model is serialized with joblib and recorded in model_registry.
 Predictions are written to fact_events.xp_value.
 """
 
+import gc
 import json
 import logging
 import os
@@ -45,7 +46,7 @@ PITCH_X       = 120.0
 PITCH_Y       = 80.0
 GOAL_CENTER   = (120.0, 40.0)
 TRAIN_SAMPLE  = 300_000   # rows for training — plenty for a good AUC
-WRITE_CHUNK   = 50_000    # rows per commit when writing predictions
+WRITE_CHUNK   = 10_000    # rows per commit when writing predictions (small = less RAM)
 
 
 def get_engine():
@@ -237,6 +238,11 @@ def run() -> None:
     X, y, _, feature_cols = build_features(df)
     model, metrics         = train(X, y)
     save_model(engine, model, metrics, feature_cols)
+
+    # Free training data before prediction phase — critical for low-RAM envs
+    del df, X, y
+    gc.collect()
+    log.info("Training data freed from memory. Starting prediction phase...")
 
     # ── Phase 2: Predict + write all passes in chunks (no OOM) ───────────────
     write_xp_values_chunked(engine, model, feature_cols)
