@@ -84,8 +84,10 @@ def build_features(df: pd.DataFrame) -> tuple:
     dx_goal  = GOAL_CENTER[0] - df["location_x"]
     dy_goal  = GOAL_CENTER[1] - df["location_y"]
     dot      = dx_pass * dx_goal + dy_pass * dy_goal
-    mag_p    = np.sqrt(dx_pass**2 + dy_pass**2).replace(0, np.nan)
-    mag_g    = np.sqrt(dx_goal**2 + dy_goal**2).replace(0, np.nan)
+    _mp      = np.sqrt(dx_pass**2 + dy_pass**2)
+    _mg      = np.sqrt(dx_goal**2 + dy_goal**2)
+    mag_p    = np.where(_mp == 0, np.nan, _mp)
+    mag_g    = np.where(_mg == 0, np.nan, _mg)
     df["angle_to_goal"] = np.arccos(np.clip(dot / (mag_p * mag_g), -1.0, 1.0)).fillna(0)
 
     df["under_pressure"] = df["under_pressure"].astype(int)
