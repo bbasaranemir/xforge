@@ -131,18 +131,20 @@ def solve_xt(shot_prob, goal_prob, transition) -> np.ndarray:
 def compute_and_write_xt(surface: np.ndarray) -> None:
     """
     1. Stream events via server-side cursor
-    2. Bulk-insert (event_id, xt_value) into a temp staging table
-    3. ONE big UPDATE fact_events FROM staging  ← fast, single pass
+    2. Bulk-insert (event_id, xt_value) into a PERSISTENT staging table
+    3. Per-competition-partition UPDATE with individual commits (resumable)
+       - Skips rows already updated (xt_value IS NOT NULL)
+       - Safe to restart: progress accumulates across runs
     """
     conn = psycopg2.connect(**_conn_params())
     conn.autocommit = False
     cur = conn.cursor()
 
-    # Staging table on the SAME connection as the final UPDATE
+    # Persistent (non-TEMP) staging table — survives DB restarts
     cur.execute("DROP TABLE IF EXISTS _xt_staging")
     cur.execute(
-        "CREATE TEMP TABLE _xt_staging "
-        "(event_id TEXT, xt_value DOUBLE PRECISION) ON COMMIT PRESERVE ROWS"
+        "CREATE TABLE _xt_staging "
+        "(event_id TEXT, xt_value DOUBLE PRECISION)"
     )
     conn.commit()
     log.info("Staging table created.")
@@ -192,16 +194,37 @@ def compute_and_write_xt(surface: np.ndarray) -> None:
                 log.info("Staged %d xT records so far...", total_written)
 
     conn.commit()
-    log.info("All %d records staged. Running bulk UPDATE...", total_written)
+    log.info("All %d records staged. Starting per-partition UPDATE...", total_written)
 
+    # Fetch all competition partitions that still need updating
     cur.execute(
-        "UPDATE fact_events fe "
-        "SET xt_value = s.xt_value "
-        "FROM _xt_staging s "
-        "WHERE fe.event_id = s.event_id"
+        "SELECT DISTINCT competition_id FROM fact_events "
+        "WHERE xt_value IS NULL ORDER BY competition_id"
     )
+    comp_ids = [row[0] for row in cur.fetchall()]
+    log.info("Found %d competition partitions to update.", len(comp_ids))
+
+    updated_total = 0
+    for i, comp_id in enumerate(comp_ids, 1):
+        cur.execute(
+            "UPDATE fact_events fe "
+            "SET xt_value = s.xt_value "
+            "FROM _xt_staging s "
+            "WHERE fe.event_id = s.event_id::uuid "
+            "AND fe.competition_id = %s "
+            "AND fe.xt_value IS NULL",
+            (comp_id,),
+        )
+        updated_total += cur.rowcount
+        conn.commit()
+        log.info(
+            "Partition %d/%d (comp_id=%s) → %d rows | cumulative=%d",
+            i, len(comp_ids), comp_id, cur.rowcount, updated_total,
+        )
+
+    cur.execute("DROP TABLE IF EXISTS _xt_staging")
     conn.commit()
-    log.info("Bulk UPDATE complete — %d events updated.", total_written)
+    log.info("All partitions updated. Total rows written: %d", updated_total)
     cur.close()
     conn.close()
 
