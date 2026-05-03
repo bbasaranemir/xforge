@@ -1,13 +1,4 @@
 {
   "name": "Enterprise Football Engine",
-  "postStartCommand": "docker compose up -d",
-  "forwardPorts": [8080, 8088, 3000, 5050, 5432, 9090],
-  "portsAttributes": {
-    "8080": {"label": "Airflow"},
-    "8088": {"label": "Superset"},
-    "3000": {"label": "Grafana"},
-    "5050": {"label": "pgAdmin"},
-    "5432": {"label": "PostgreSQL"},
-    "9090": {"label": "Prometheus"}
-  }
+  "postStartCommand": "docker compose up -d && sleep 15 && docker compose exec -T --user root airflow-scheduler chmod -R 777 /opt/airflow/reports; nohup docker compose exec -T airflow-scheduler bash -c 'python /opt/airflow/scripts/predictive_models.py && python /opt/airflow/scripts/tactical_models.py' >> /tmp/ml_autostart.log 2>&1 &"
 }
