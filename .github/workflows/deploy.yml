@@ -139,6 +139,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [test, dbt-check]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    continue-on-error: true  # skip gracefully when EC2 secrets are not configured
 
     steps:
       - uses: actions/checkout@v4
@@ -150,7 +151,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key:      ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd /opt/enterprise_football_engine
+            cd /opt/xforge
             git pull origin main
             cp .env.production .env
             docker compose pull

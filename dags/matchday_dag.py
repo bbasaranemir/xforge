@@ -72,7 +72,7 @@ def send_report_email(**context):
         to=RECIPIENT,
         subject=f"Football Analytics Report — Match {match_id}",
         html_content=f"""
-        <h3>Football Analytics Engine</h3>
+        <h3>xForge — Match Report</h3>
         <p>Attached: PDF report and SportsCode XML for match <strong>{match_id}</strong>.</p>
         <ul>
           <li>xT heatmap</li>

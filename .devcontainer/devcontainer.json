@@ -1,4 +1,4 @@
 {
-  "name": "Enterprise Football Engine",
-  "postStartCommand": "docker compose up -d && sleep 15 && docker compose exec -T --user root airflow-scheduler chmod -R 777 /opt/airflow/reports; nohup docker compose exec -T airflow-scheduler bash -c 'python /opt/airflow/scripts/predictive_models.py && python /opt/airflow/scripts/tactical_models.py' >> /tmp/ml_autostart.log 2>&1 &"
+  "name": "xForge",
+  "postStartCommand": "docker compose up -d && sleep 15 && docker compose exec -T --user root airflow-scheduler chmod -R 777 /opt/airflow/reports && nohup docker compose exec -T airflow-scheduler python /opt/airflow/scripts/predictive_models.py >> /tmp/xp_autostart.log 2>&1 &"
 }

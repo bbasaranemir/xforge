@@ -46,7 +46,7 @@ PITCH_X       = 120.0
 PITCH_Y       = 80.0
 GOAL_CENTER   = (120.0, 40.0)
 TRAIN_SAMPLE  = 300_000   # rows for training — plenty for a good AUC
-WRITE_CHUNK   = 10_000    # rows per commit when writing predictions (small = less RAM)
+WRITE_CHUNK   = 50_000    # rows per commit — 5x throughput; index on xp_value IS NULL required
 
 
 def get_engine():
@@ -228,6 +228,17 @@ def write_xp_values_chunked(engine, model, feature_cols: list) -> None:
 
 def run() -> None:
     engine = get_engine()
+
+    # ── Early-exit: skip if model exists and all predictions are written ──────
+    if os.path.exists(MODEL_PATH):
+        with engine.connect() as conn:
+            remaining = conn.execute(text(
+                f"SELECT COUNT(*) FROM fact_events WHERE {PASS_WHERE} AND xp_value IS NULL"
+            )).scalar()
+        if remaining == 0:
+            log.info("xP already complete (model exists, 0 rows remaining) — skipping.")
+            return
+        log.info("xP resume: %d passes still need predictions.", remaining)
 
     # ── Phase 1: Train on a memory-safe sample ────────────────────────────────
     df = fetch_passes_sample(engine)

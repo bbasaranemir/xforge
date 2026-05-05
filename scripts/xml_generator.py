@@ -73,7 +73,7 @@ def build_xml(events: pd.DataFrame, match_id: int) -> ET.Element:
     # Header
     header = ET.SubElement(root, "header")
     ET.SubElement(header, "version").text         = "1.0"
-    ET.SubElement(header, "source_application").text = "EnterpriseFootballEngine"
+    ET.SubElement(header, "source_application").text = "xForge"
     ET.SubElement(header, "match_id").text        = str(match_id)
 
     # Code window definitions
