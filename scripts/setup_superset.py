@@ -447,34 +447,53 @@ def build_position_data(chart_ids: list[int]) -> dict:
 
 def get_or_create_dashboard(client: SupersetClient,
                               chart_ids: list[int]) -> int:
-    """Create the Matchday Analytics dashboard; return its id."""
+    """Create (or update) the Matchday Analytics dashboard; return its id."""
     existing = client.list_all("/api/v1/dashboard/")
-    for db in existing:
-        if db.get("dashboard_title") == DASHBOARD_TITLE:
-            dash_id = db["id"]
-            log.info("Dashboard already exists: id=%s — updating layout", dash_id)
-            pos = build_position_data(chart_ids)
-            log.debug("position_data: %s", json.dumps(pos, indent=2))
-            client.put(f"/api/v1/dashboard/{dash_id}", {
-                "position_data": json.dumps(pos),
-                "published":     True,
-            })
+    for d in existing:
+        if d.get("dashboard_title") == DASHBOARD_TITLE:
+            dash_id = d["id"]
+            log.info("Dashboard already exists: id=%s — publishing", dash_id)
+            _put_dashboard(client, dash_id, chart_ids)
             return dash_id
 
-    # Step 1: create with minimal payload
+    # Create with position_data in the POST body (accepted at creation time)
+    pos = build_position_data(chart_ids)
     result = client.post("/api/v1/dashboard/", {
         "dashboard_title": DASHBOARD_TITLE,
-        "published":       False,
+        "published":       True,
+        "position_data":   json.dumps(pos),
     })
     dash_id = result["id"]
     log.info("Dashboard created: %s (id=%s)", DASHBOARD_TITLE, dash_id)
-
-    # Step 2: update with chart layout
-    client.put(f"/api/v1/dashboard/{dash_id}", {
-        "position_data": json.dumps(build_position_data(chart_ids)),
-    })
-    log.info("Dashboard layout set: %d charts", len(chart_ids))
     return dash_id
+
+
+def _put_dashboard(client: SupersetClient, dash_id: int,
+                   chart_ids: list[int]) -> None:
+    """Update an existing dashboard — falls back gracefully if position_data
+    is not accepted by this Superset version's PUT schema."""
+    pos = build_position_data(chart_ids)
+
+    # Try with position_data first
+    r = client.session.put(
+        f"{client.base}/api/v1/dashboard/{dash_id}",
+        json={"published": True, "position_data": json.dumps(pos)},
+    )
+    if r.ok:
+        log.info("Dashboard updated with layout (id=%s)", dash_id)
+        return
+
+    # Fallback: publish only (position_data unsupported in this version)
+    log.warning("PUT with position_data failed (%s) — publishing without layout", r.status_code)
+    r2 = client.session.put(
+        f"{client.base}/api/v1/dashboard/{dash_id}",
+        json={"published": True},
+    )
+    if r2.ok:
+        log.info("Dashboard published (id=%s). Open Superset → Dashboards → "
+                 "Edit → drag charts manually.", dash_id)
+    else:
+        log.error("PUT /api/v1/dashboard/%s → %s: %s", dash_id, r2.status_code, r2.text[:300])
 
 
 def publish_dashboard(client: SupersetClient, dash_id: int) -> None:
