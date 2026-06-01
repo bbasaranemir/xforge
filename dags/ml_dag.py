@@ -15,29 +15,33 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
 DEFAULT_ARGS = {
-    "owner":            "analytics",
-    "retries":          1,
-    "retry_delay":      timedelta(minutes=10),
+    "owner": "analytics",
+    "retries": 1,
+    "retry_delay": timedelta(minutes=10),
     "email_on_failure": True,
-    "email_on_retry":   False,
+    "email_on_retry": False,
 }
 
 SCRIPT_DIR = "/opt/airflow/scripts"
-DBT_DIR    = "/opt/airflow/dbt_project"
-DBT_CMD    = f"cd {DBT_DIR} && dbt"
+DBT_DIR = "/opt/airflow/dbt_project"
+DBT_CMD = f"cd {DBT_DIR} && dbt"
 
 
 def run_tactical():
     import sys
+
     sys.path.insert(0, SCRIPT_DIR)
     import tactical_models
+
     tactical_models.run()
 
 
 def run_predictive():
     import sys
+
     sys.path.insert(0, SCRIPT_DIR)
     import predictive_models
+
     predictive_models.run()
 
 

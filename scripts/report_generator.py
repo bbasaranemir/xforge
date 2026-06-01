@@ -30,8 +30,8 @@ DB_URL = (
 )
 
 REPORT_DIR = "/opt/airflow/reports"
-GRID_COLS  = 16
-GRID_ROWS  = 12
+GRID_COLS = 16
+GRID_ROWS = 12
 
 
 def get_engine():
@@ -40,10 +40,13 @@ def get_engine():
 
 # ─── Data queries ─────────────────────────────────────────────────────────────
 
+
 def fetch_xt_surface(engine) -> np.ndarray:
     with engine.connect() as conn:
         df = pd.read_sql(
-            text("SELECT grid_col, grid_row, xt_value FROM xt_surface ORDER BY grid_row, grid_col"),
+            text(
+                "SELECT grid_col, grid_row, xt_value FROM xt_surface ORDER BY grid_row, grid_col"
+            ),
             conn,
         )
     grid = np.zeros((GRID_ROWS, GRID_COLS))
@@ -80,6 +83,7 @@ def fetch_match_meta(engine, match_id: int) -> dict:
 
 # ─── Plot helpers ─────────────────────────────────────────────────────────────
 
+
 def _fig_title(fig, text_: str) -> None:
     fig.suptitle(text_, fontsize=11, fontweight="bold", y=0.98)
 
@@ -103,8 +107,10 @@ def plot_xt_heatmap(grid: np.ndarray, meta: dict) -> plt.Figure:
     )
     plt.colorbar(im, ax=ax, fraction=0.03, pad=0.02, label="xT value")
 
-    title = (f"{meta.get('home_team', '')} vs {meta.get('away_team', '')} "
-             f"— xT Surface ({meta.get('match_date', '')})")
+    title = (
+        f"{meta.get('home_team', '')} vs {meta.get('away_team', '')} "
+        f"— xT Surface ({meta.get('match_date', '')})"
+    )
     _fig_title(fig, title)
     return fig
 
@@ -119,14 +125,24 @@ def plot_pass_network(events: pd.DataFrame, team_name: str) -> plt.Figure:
 
     if passes.empty:
         fig, ax = plt.subplots(figsize=(10, 7))
-        ax.text(0.5, 0.5, f"No pass data for {team_name}", ha="center", transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            f"No pass data for {team_name}",
+            ha="center",
+            transform=ax.transAxes,
+        )
         return fig
 
-    player_avg = passes.groupby("player_name").agg(
-        avg_x=("location_x", "mean"),
-        avg_y=("location_y", "mean"),
-        count=("event_id", "count"),
-    ).reset_index()
+    player_avg = (
+        passes.groupby("player_name")
+        .agg(
+            avg_x=("location_x", "mean"),
+            avg_y=("location_y", "mean"),
+            count=("event_id", "count"),
+        )
+        .reset_index()
+    )
 
     pitch = Pitch(pitch_type="statsbomb", pitch_color="#0d1b2a", line_color="#aaaaaa")
     fig, ax = pitch.draw(figsize=(12, 8))
@@ -134,28 +150,38 @@ def plot_pass_network(events: pd.DataFrame, team_name: str) -> plt.Figure:
 
     for _, row in player_avg.iterrows():
         size = np.clip(row["count"] * 3, 50, 600)
-        ax.scatter(row["avg_x"], row["avg_y"], s=size, color="#e63946", zorder=3, alpha=0.9)
-        ax.text(row["avg_x"], row["avg_y"] - 3, row["player_name"].split()[-1],
-                fontsize=6, color="white", ha="center", va="top")
+        ax.scatter(
+            row["avg_x"], row["avg_y"], s=size, color="#e63946", zorder=3, alpha=0.9
+        )
+        ax.text(
+            row["avg_x"],
+            row["avg_y"] - 3,
+            row["player_name"].split()[-1],
+            fontsize=6,
+            color="white",
+            ha="center",
+            va="top",
+        )
 
     _fig_title(fig, f"{team_name} — Pass Network")
     return fig
 
 
 def plot_top_xt_events(events: pd.DataFrame, meta: dict) -> plt.Figure:
-    top = (
-        events[events["xt_value"].notna()]
-        .nlargest(15, "xt_value")
-    )
+    top = events[events["xt_value"].notna()].nlargest(15, "xt_value")
 
     pitch = Pitch(pitch_type="statsbomb", pitch_color="#1a1a2e", line_color="#ffffff")
     fig, ax = pitch.draw(figsize=(12, 8))
     fig.set_facecolor("#1a1a2e")
 
     sc = ax.scatter(
-        top["location_x"], top["location_y"],
-        c=top["xt_value"], cmap="plasma",
-        s=120, zorder=3, alpha=0.9,
+        top["location_x"],
+        top["location_y"],
+        c=top["xt_value"],
+        cmap="plasma",
+        s=120,
+        zorder=3,
+        alpha=0.9,
     )
     for _, row in top.iterrows():
         if pd.notna(row["end_location_x"]):
@@ -184,14 +210,20 @@ def plot_player_bars(events: pd.DataFrame) -> plt.Figure:
     ax.set_facecolor("#1a1a2e")
 
     colors = ["#e63946" if i % 2 == 0 else "#457b9d" for i in range(len(player_xt))]
-    bars   = ax.barh(player_xt["player_name"], player_xt["xt_value"], color=colors)
+    bars = ax.barh(player_xt["player_name"], player_xt["xt_value"], color=colors)
 
     ax.set_xlabel("Total xT", color="white")
     ax.tick_params(colors="white")
     ax.spines[:].set_color("#444444")
     for bar, val in zip(bars, player_xt["xt_value"]):
-        ax.text(val + 0.002, bar.get_y() + bar.get_height() / 2,
-                f"{val:.3f}", va="center", color="white", fontsize=8)
+        ax.text(
+            val + 0.002,
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:.3f}",
+            va="center",
+            color="white",
+            fontsize=8,
+        )
 
     _fig_title(fig, "Top 10 Players by Total xT")
     return fig
@@ -199,16 +231,17 @@ def plot_player_bars(events: pd.DataFrame) -> plt.Figure:
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
+
 def run(match_id: int) -> str:
     engine = get_engine()
     os.makedirs(REPORT_DIR, exist_ok=True)
 
-    meta   = fetch_match_meta(engine, match_id)
+    meta = fetch_match_meta(engine, match_id)
     events = fetch_match_events(engine, match_id)
-    grid   = fetch_xt_surface(engine)
+    grid = fetch_xt_surface(engine)
 
-    teams  = events["team_name"].dropna().unique()
-    path   = os.path.join(REPORT_DIR, f"match_{match_id}.pdf")
+    teams = events["team_name"].dropna().unique()
+    path = os.path.join(REPORT_DIR, f"match_{match_id}.pdf")
 
     with PdfPages(path) as pdf:
         for fig in [
@@ -226,4 +259,5 @@ def run(match_id: int) -> str:
 
 if __name__ == "__main__":
     import sys
+
     run(int(sys.argv[1]))

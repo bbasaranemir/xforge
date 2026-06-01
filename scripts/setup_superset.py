@@ -28,15 +28,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 # ── Config ────────────────────────────────────────────────────────────────────
 SUPERSET_URL = os.environ.get("SUPERSET_URL", "http://superset:8088")
-ADMIN_USER   = os.environ.get("SUPERSET_USER",     "admin")
-ADMIN_PASS   = os.environ.get("SUPERSET_PASSWORD", "admin123")
+ADMIN_USER = os.environ.get("SUPERSET_USER", "admin")
+ADMIN_PASS = os.environ.get("SUPERSET_PASSWORD", "admin123")
 
-_pg_user = os.environ.get("POSTGRES_USER",     "analytics")
+_pg_user = os.environ.get("POSTGRES_USER", "analytics")
 _pg_pass = os.environ.get("POSTGRES_PASSWORD", "analytics123")
-_pg_host = os.environ.get("POSTGRES_HOST",     "postgres")
-_pg_db   = os.environ.get("FOOTBALL_DB",       "football_analytics")
+_pg_host = os.environ.get("POSTGRES_HOST", "postgres")
+_pg_db = os.environ.get("FOOTBALL_DB", "football_analytics")
 
-DB_NAME     = "xForge — Football Analytics"
+DB_NAME = "xForge — Football Analytics"
 DB_CONN_STR = f"postgresql+psycopg2://{_pg_user}:{_pg_pass}@{_pg_host}:5432/{_pg_db}"
 DASHBOARD_TITLE = "Matchday Analytics"
 
@@ -88,7 +88,6 @@ CHART_DEFS: list[dict[str, Any]] = [
             "show_perc": True,
         },
     },
-
     # 2 ── Player xT Ranking (table)
     {
         "name": "Player xT Ranking",
@@ -116,7 +115,6 @@ LIMIT 20
             "adhoc_filters": [],
         },
     },
-
     # 3 ── Team Action Summary (table)
     {
         "name": "Team Action Summary",
@@ -136,7 +134,14 @@ ORDER BY total_xt DESC
         "viz_type": "table",
         "params": {
             "viz_type": "table",
-            "all_columns": ["team_name", "total_actions", "total_xt", "avg_xt", "shots", "passes"],
+            "all_columns": [
+                "team_name",
+                "total_actions",
+                "total_xt",
+                "avg_xt",
+                "shots",
+                "passes",
+            ],
             "metrics": [],
             "percent_metrics": [],
             "timeseries_limit_metric": None,
@@ -146,7 +151,6 @@ ORDER BY total_xt DESC
             "adhoc_filters": [],
         },
     },
-
     # 4 ── Set Piece Delivery Clusters (table)
     {
         "name": "Set Piece Delivery Clusters",
@@ -171,7 +175,6 @@ ORDER BY event_type, cluster_label
             "adhoc_filters": [],
         },
     },
-
     # 5 ── Shot Quality by Zone (table)
     {
         "name": "Shot Quality by Zone",
@@ -203,7 +206,6 @@ ORDER BY avg_xp DESC
             "adhoc_filters": [],
         },
     },
-
     # 6 ── Match xT Balance — home vs away (table for reliability)
     {
         "name": "Match xT Balance",
@@ -234,7 +236,6 @@ LIMIT 50
             "adhoc_filters": [],
         },
     },
-
     # 7 ── Press Intensity by Team (table)
     {
         "name": "Press Intensity by Team",
@@ -268,22 +269,26 @@ LIMIT 20
 # ── Superset REST client ───────────────────────────────────────────────────────
 class SupersetClient:
     def __init__(self, base_url: str, username: str, password: str) -> None:
-        self.base    = base_url.rstrip("/")
+        self.base = base_url.rstrip("/")
         self.session = requests.Session()
         self._login(username, password)
 
     def _login(self, username: str, password: str) -> None:
         r = self.session.post(
             f"{self.base}/api/v1/security/login",
-            json={"username": username, "password": password,
-                  "provider": "db", "refresh": True},
+            json={
+                "username": username,
+                "password": password,
+                "provider": "db",
+                "refresh": True,
+            },
         )
         r.raise_for_status()
         self.session.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
         r2 = self.session.get(f"{self.base}/api/v1/security/csrf_token/")
         r2.raise_for_status()
         self.session.headers["X-CSRFToken"] = r2.json()["result"]
-        self.session.headers["Referer"]     = self.base
+        self.session.headers["Referer"] = self.base
         log.info("Superset login OK")
 
     def get(self, path: str, **kwargs: Any) -> dict:
@@ -311,7 +316,9 @@ class SupersetClient:
         page = 0
         page_size = 100
         while True:
-            data = self.get(path, params={"q": json.dumps({"page": page, "page_size": page_size})})
+            data = self.get(
+                path, params={"q": json.dumps({"page": page, "page_size": page_size})}
+            )
             batch = data.get("result", [])
             items.extend(batch)
             if len(batch) < page_size:
@@ -339,15 +346,18 @@ def wait_for_superset(max_wait: int = 300) -> None:
 def get_or_create_database(client: SupersetClient) -> int:
     """Return id of the football_analytics database connection."""
     try:
-        result = client.post("/api/v1/database/", {
-            "database_name":    DB_NAME,
-            "sqlalchemy_uri":   DB_CONN_STR,
-            "expose_in_sqllab": True,
-            "allow_run_async":  False,
-            "allow_ctas":       False,
-            "allow_cvas":       False,
-            "allow_dml":        False,
-        })
+        result = client.post(
+            "/api/v1/database/",
+            {
+                "database_name": DB_NAME,
+                "sqlalchemy_uri": DB_CONN_STR,
+                "expose_in_sqllab": True,
+                "allow_run_async": False,
+                "allow_ctas": False,
+                "allow_cvas": False,
+                "allow_dml": False,
+            },
+        )
         db_id = result["id"]
         log.info("Database connection created: id=%s", db_id)
         return db_id
@@ -355,7 +365,7 @@ def get_or_create_database(client: SupersetClient) -> int:
         if exc.response.status_code not in (422, 409):
             raise
         existing = client.list_all("/api/v1/database/")
-        matches  = [d for d in existing if d["database_name"] == DB_NAME]
+        matches = [d for d in existing if d["database_name"] == DB_NAME]
         if not matches:
             raise RuntimeError("Database not found after 422") from exc
         db_id = matches[0]["id"]
@@ -363,8 +373,9 @@ def get_or_create_database(client: SupersetClient) -> int:
         return db_id
 
 
-def get_or_create_dataset(client: SupersetClient, db_id: int,
-                           name: str, sql: str) -> int:
+def get_or_create_dataset(
+    client: SupersetClient, db_id: int, name: str, sql: str
+) -> int:
     """Create a virtual SQL dataset; return its id (reuse if already exists)."""
     existing = client.list_all("/api/v1/dataset/")
     for ds in existing:
@@ -372,29 +383,33 @@ def get_or_create_dataset(client: SupersetClient, db_id: int,
             log.info("Dataset already exists: %s (id=%s)", name, ds["id"])
             return ds["id"]
 
-    result = client.post("/api/v1/dataset/", {
-        "database": db_id,
-        "table_name": name,
-        "sql": sql,
-        "schema": "public",
-        "is_managed_externally": False,
-    })
+    result = client.post(
+        "/api/v1/dataset/",
+        {
+            "database": db_id,
+            "table_name": name,
+            "sql": sql,
+            "schema": "public",
+            "is_managed_externally": False,
+        },
+    )
     ds_id = result["id"]
     log.info("Dataset created: %s (id=%s)", name, ds_id)
     return ds_id
 
 
-def get_or_create_chart(client: SupersetClient, ds_id: int,
-                         chart_def: dict[str, Any]) -> int:
+def get_or_create_chart(
+    client: SupersetClient, ds_id: int, chart_def: dict[str, Any]
+) -> int:
     """Create or update a chart; always sync viz_type + params."""
     params = dict(chart_def["params"])
     params["viz_type"] = chart_def["viz_type"]
     payload = {
-        "datasource_id":   ds_id,
+        "datasource_id": ds_id,
         "datasource_type": "table",
-        "viz_type":        chart_def["viz_type"],
-        "params":          json.dumps(params),
-        "slice_name":      chart_def["name"],
+        "viz_type": chart_def["viz_type"],
+        "params": json.dumps(params),
+        "slice_name": chart_def["name"],
     }
 
     existing = client.list_all("/api/v1/chart/")
@@ -402,7 +417,9 @@ def get_or_create_chart(client: SupersetClient, ds_id: int,
         if ch.get("slice_name") == chart_def["name"]:
             chart_id = ch["id"]
             # Update to sync latest viz_type and params
-            r = client.session.put(f"{client.base}/api/v1/chart/{chart_id}", json=payload)
+            r = client.session.put(
+                f"{client.base}/api/v1/chart/{chart_id}", json=payload
+            )
             if r.ok:
                 log.info("Chart updated: %s (id=%s)", chart_def["name"], chart_id)
             else:
@@ -428,12 +445,15 @@ def build_position_data(chart_ids: list[int]) -> dict:
     pos: dict[str, Any] = {
         "DASHBOARD_VERSION_KEY": "v2",
         "ROOT_ID": {
-            "type": "ROOT", "id": "ROOT_ID",
+            "type": "ROOT",
+            "id": "ROOT_ID",
             "children": ["GRID_ID"],
         },
         "GRID_ID": {
-            "type": "GRID", "id": "GRID_ID",
-            "children": [], "parents": ["ROOT_ID"],
+            "type": "GRID",
+            "id": "GRID_ID",
+            "children": [],
+            "parents": ["ROOT_ID"],
         },
     }
 
@@ -445,12 +465,15 @@ def build_position_data(chart_ids: list[int]) -> dict:
             slot_id = f"CHART-{_uid()}"
             slot_ids.append(slot_id)
             pos[slot_id] = {
-                "type": "CHART", "id": slot_id, "children": [],
+                "type": "CHART",
+                "id": slot_id,
+                "children": [],
                 "parents": ["ROOT_ID", "GRID_ID", row_id],
                 "meta": {"chartId": cid, "width": width, "height": 50, "sliceName": ""},
             }
         pos[row_id] = {
-            "type": "ROW", "id": row_id,
+            "type": "ROW",
+            "id": row_id,
             "children": slot_ids,
             "parents": ["ROOT_ID", "GRID_ID"],
             "meta": {"background": "BACKGROUND_TRANSPARENT"},
@@ -466,8 +489,7 @@ def build_position_data(chart_ids: list[int]) -> dict:
     return pos
 
 
-def get_or_create_dashboard(client: SupersetClient,
-                              chart_ids: list[int]) -> int:
+def get_or_create_dashboard(client: SupersetClient, chart_ids: list[int]) -> int:
     """Create (or update) the Matchday Analytics dashboard; return its id."""
     existing = client.list_all("/api/v1/dashboard/")
     for d in existing:
@@ -479,18 +501,20 @@ def get_or_create_dashboard(client: SupersetClient,
 
     # Create with position_data in the POST body (accepted at creation time)
     pos = build_position_data(chart_ids)
-    result = client.post("/api/v1/dashboard/", {
-        "dashboard_title": DASHBOARD_TITLE,
-        "published":       True,
-        "position_data":   json.dumps(pos),
-    })
+    result = client.post(
+        "/api/v1/dashboard/",
+        {
+            "dashboard_title": DASHBOARD_TITLE,
+            "published": True,
+            "position_data": json.dumps(pos),
+        },
+    )
     dash_id = result["id"]
     log.info("Dashboard created: %s (id=%s)", DASHBOARD_TITLE, dash_id)
     return dash_id
 
 
-def _put_dashboard(client: SupersetClient, dash_id: int,
-                   chart_ids: list[int]) -> None:
+def _put_dashboard(client: SupersetClient, dash_id: int, chart_ids: list[int]) -> None:
     """Update an existing dashboard — falls back gracefully if position_data
     is not accepted by this Superset version's PUT schema."""
     pos = build_position_data(chart_ids)
@@ -505,16 +529,23 @@ def _put_dashboard(client: SupersetClient, dash_id: int,
         return
 
     # Fallback: publish only (position_data unsupported in this version)
-    log.warning("PUT with position_data failed (%s) — publishing without layout", r.status_code)
+    log.warning(
+        "PUT with position_data failed (%s) — publishing without layout", r.status_code
+    )
     r2 = client.session.put(
         f"{client.base}/api/v1/dashboard/{dash_id}",
         json={"published": True},
     )
     if r2.ok:
-        log.info("Dashboard published (id=%s). Open Superset → Dashboards → "
-                 "Edit → drag charts manually.", dash_id)
+        log.info(
+            "Dashboard published (id=%s). Open Superset → Dashboards → "
+            "Edit → drag charts manually.",
+            dash_id,
+        )
     else:
-        log.error("PUT /api/v1/dashboard/%s → %s: %s", dash_id, r2.status_code, r2.text[:300])
+        log.error(
+            "PUT /api/v1/dashboard/%s → %s: %s", dash_id, r2.status_code, r2.text[:300]
+        )
 
 
 def publish_dashboard(client: SupersetClient, dash_id: int) -> None:
@@ -532,8 +563,8 @@ def run() -> None:
     chart_ids: list[int] = []
     for cdef in CHART_DEFS:
         ds_name = f"ds_{cdef['name'].lower().replace(' ', '_').replace('—', '').replace('-', '_')}"
-        ds_id   = get_or_create_dataset(client, db_id, ds_name, cdef["sql"])
-        ch_id   = get_or_create_chart(client, ds_id, cdef)
+        ds_id = get_or_create_dataset(client, db_id, ds_name, cdef["sql"])
+        ch_id = get_or_create_chart(client, ds_id, cdef)
         chart_ids.append(ch_id)
 
     dash_id = get_or_create_dashboard(client, chart_ids)

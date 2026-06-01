@@ -39,6 +39,7 @@ def get_engine():
 
 # ─── Partition management ─────────────────────────────────────────────────────
 
+
 def ensure_partition(engine, competition_id: int) -> None:
     with engine.begin() as conn:
         conn.execute(
@@ -48,6 +49,7 @@ def ensure_partition(engine, competition_id: int) -> None:
 
 
 # ─── Dimension loaders ───────────────────────────────────────────────────────
+
 
 def upsert_competitions(engine, competitions: pd.DataFrame) -> None:
     records = (
@@ -97,15 +99,19 @@ def upsert_match(engine, row: pd.Series) -> None:
                 ON CONFLICT (match_id) DO NOTHING
             """),
             {
-                "match_id":       int(row["match_id"]),
+                "match_id": int(row["match_id"]),
                 "competition_id": int(row["competition_id"]),
-                "season_id":      int(row["season_id"]),
-                "match_date":     row.get("match_date"),
-                "home_team":      row.get("home_team"),
-                "away_team":      row.get("away_team"),
-                "home_score":     int(row["home_score"]) if pd.notna(row.get("home_score")) else None,
-                "away_score":     int(row["away_score"]) if pd.notna(row.get("away_score")) else None,
-                "stage":          row.get("competition_stage"),
+                "season_id": int(row["season_id"]),
+                "match_date": row.get("match_date"),
+                "home_team": row.get("home_team"),
+                "away_team": row.get("away_team"),
+                "home_score": (
+                    int(row["home_score"]) if pd.notna(row.get("home_score")) else None
+                ),
+                "away_score": (
+                    int(row["away_score"]) if pd.notna(row.get("away_score")) else None
+                ),
+                "stage": row.get("competition_stage"),
             },
         )
 
@@ -155,6 +161,7 @@ def upsert_players(engine, events: pd.DataFrame) -> None:
 
 # ─── Event flattening ────────────────────────────────────────────────────────
 
+
 def _coord(val, idx: int) -> Optional[float]:
     if isinstance(val, list) and len(val) > idx:
         return float(val[idx])
@@ -177,38 +184,66 @@ def _outcome(row) -> Optional[str]:
     return None
 
 
-def flatten_events(events: pd.DataFrame, match_id: int, competition_id: int) -> pd.DataFrame:
+def flatten_events(
+    events: pd.DataFrame, match_id: int, competition_id: int
+) -> pd.DataFrame:
     df = events.copy()
 
-    df["event_id"]       = df["id"].apply(lambda x: str(uuid.UUID(str(x))) if pd.notna(x) else str(uuid.uuid4()))
-    df["match_id"]       = match_id
+    df["event_id"] = df["id"].apply(
+        lambda x: str(uuid.UUID(str(x))) if pd.notna(x) else str(uuid.uuid4())
+    )
+    df["match_id"] = match_id
     df["competition_id"] = competition_id
-    df["event_type"]     = df["type"].apply(lambda x: x.get("name") if isinstance(x, dict) else x)
-    df["minute"]         = df["minute"].astype("Int64")
-    df["second"]         = df["second"].astype("Int64")
-    df["location_x"]     = df["location"].apply(lambda x: _coord(x, 0))
-    df["location_y"]     = df["location"].apply(lambda x: _coord(x, 1))
-    df["team_id"]        = pd.to_numeric(df.get("team_id"), errors="coerce").astype("Int64")
-    df["player_id"]      = pd.to_numeric(df.get("player_id"), errors="coerce").astype("Int64")
+    df["event_type"] = df["type"].apply(
+        lambda x: x.get("name") if isinstance(x, dict) else x
+    )
+    df["minute"] = df["minute"].astype("Int64")
+    df["second"] = df["second"].astype("Int64")
+    df["location_x"] = df["location"].apply(lambda x: _coord(x, 0))
+    df["location_y"] = df["location"].apply(lambda x: _coord(x, 1))
+    df["team_id"] = pd.to_numeric(df.get("team_id"), errors="coerce").astype("Int64")
+    df["player_id"] = pd.to_numeric(df.get("player_id"), errors="coerce").astype(
+        "Int64"
+    )
 
-    end_locs             = df.apply(_end_location, axis=1)
+    end_locs = df.apply(_end_location, axis=1)
     df["end_location_x"] = [e[0] for e in end_locs]
     df["end_location_y"] = [e[1] for e in end_locs]
-    df["outcome"]        = df.apply(_outcome, axis=1)
-    df["under_pressure"] = df.get("under_pressure", pd.Series(False, index=df.index)).fillna(False).astype(bool)
-    df["xt_value"]       = None
-    df["xp_value"]       = None
-    df["raw_json"]       = df.apply(lambda r: r.to_json(), axis=1)
+    df["outcome"] = df.apply(_outcome, axis=1)
+    df["under_pressure"] = (
+        df.get("under_pressure", pd.Series(False, index=df.index))
+        .fillna(False)
+        .astype(bool)
+    )
+    df["xt_value"] = None
+    df["xp_value"] = None
+    df["raw_json"] = df.apply(lambda r: r.to_json(), axis=1)
 
-    return df[[
-        "event_id", "match_id", "competition_id", "team_id", "player_id",
-        "event_type", "minute", "second",
-        "location_x", "location_y", "end_location_x", "end_location_y",
-        "outcome", "under_pressure", "xt_value", "xp_value", "raw_json",
-    ]]
+    return df[
+        [
+            "event_id",
+            "match_id",
+            "competition_id",
+            "team_id",
+            "player_id",
+            "event_type",
+            "minute",
+            "second",
+            "location_x",
+            "location_y",
+            "end_location_x",
+            "end_location_y",
+            "outcome",
+            "under_pressure",
+            "xt_value",
+            "xp_value",
+            "raw_json",
+        ]
+    ]
 
 
 # ─── Bulk insert ─────────────────────────────────────────────────────────────
+
 
 def bulk_insert_events(engine, flat: pd.DataFrame) -> None:
     """Bulk insert via pandas to_sql (multi-row VALUES).
@@ -219,7 +254,9 @@ def bulk_insert_events(engine, flat: pd.DataFrame) -> None:
     insert_df = flat.drop(columns=["raw_json"], errors="ignore").copy()
 
     for col in ("team_id", "player_id", "minute", "second"):
-        insert_df[col] = insert_df[col].astype(object).where(insert_df[col].notna(), None)
+        insert_df[col] = (
+            insert_df[col].astype(object).where(insert_df[col].notna(), None)
+        )
 
     insert_df.to_sql(
         "fact_events",
@@ -233,13 +270,22 @@ def bulk_insert_events(engine, flat: pd.DataFrame) -> None:
 
 # ─── Match ingestion ─────────────────────────────────────────────────────────
 
+
 def get_ingested_ids(engine) -> set:
     with engine.connect() as conn:
-        result = conn.execute(text("SELECT match_id FROM ingested_matches WHERE status = 'success'"))
+        result = conn.execute(
+            text("SELECT match_id FROM ingested_matches WHERE status = 'success'")
+        )
         return {r[0] for r in result}
 
 
-def mark_ingested(engine, match_id: int, competition_id: int, event_count: int, status: str = "success") -> None:
+def mark_ingested(
+    engine,
+    match_id: int,
+    competition_id: int,
+    event_count: int,
+    status: str = "success",
+) -> None:
     with engine.begin() as conn:
         conn.execute(
             text("""
@@ -247,7 +293,12 @@ def mark_ingested(engine, match_id: int, competition_id: int, event_count: int, 
                 VALUES (:mid, :cid, :cnt, :status)
                 ON CONFLICT (match_id) DO UPDATE SET status = EXCLUDED.status, ingested_at = NOW()
             """),
-            {"mid": match_id, "cid": competition_id, "cnt": event_count, "status": status},
+            {
+                "mid": match_id,
+                "cid": competition_id,
+                "cnt": event_count,
+                "status": status,
+            },
         )
 
 
@@ -270,6 +321,7 @@ def ingest_match(engine, match_id: int, competition_id: int) -> None:
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
+
 def run(competition_filter: Optional[list] = None) -> None:
     engine = get_engine()
 
@@ -278,7 +330,9 @@ def run(competition_filter: Optional[list] = None) -> None:
     upsert_seasons(engine, competitions)
 
     if competition_filter:
-        competitions = competitions[competitions["competition_id"].isin(competition_filter)]
+        competitions = competitions[
+            competitions["competition_id"].isin(competition_filter)
+        ]
 
     ingested = get_ingested_ids(engine)
     log.info("Already ingested: %d matches", len(ingested))
@@ -296,7 +350,13 @@ def run(competition_filter: Optional[list] = None) -> None:
             continue
 
         pending = matches[~matches["match_id"].isin(ingested)]
-        log.info("competition=%d season=%d pending=%d/%d", cid, sid, len(pending), len(matches))
+        log.info(
+            "competition=%d season=%d pending=%d/%d",
+            cid,
+            sid,
+            len(pending),
+            len(matches),
+        )
 
         for _, match_row in pending.iterrows():
             mid = int(match_row["match_id"])

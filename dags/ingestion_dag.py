@@ -17,36 +17,42 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
 DEFAULT_ARGS = {
-    "owner":            "analytics",
-    "retries":          2,
-    "retry_delay":      timedelta(minutes=5),
+    "owner": "analytics",
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
     "email_on_failure": True,
-    "email_on_retry":   False,
+    "email_on_retry": False,
 }
 
-DBT_DIR    = "/opt/airflow/dbt_project"
-DBT_CMD    = f"cd {DBT_DIR} && dbt"
+DBT_DIR = "/opt/airflow/dbt_project"
+DBT_CMD = f"cd {DBT_DIR} && dbt"
 SCRIPT_DIR = "/opt/airflow/scripts"
 
 
 def run_ingestion():
     import sys
+
     sys.path.insert(0, SCRIPT_DIR)
     import massive_ingestion
+
     massive_ingestion.run()
 
 
 def run_xt_model():
     import sys
+
     sys.path.insert(0, SCRIPT_DIR)
     import xt_model
+
     xt_model.run()
 
 
 def run_superset_init():
     import sys
+
     sys.path.insert(0, SCRIPT_DIR)
     import superset_init
+
     superset_init.run()
 
 

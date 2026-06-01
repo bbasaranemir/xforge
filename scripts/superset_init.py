@@ -14,10 +14,10 @@ log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 SUPERSET_URL = os.environ.get("SUPERSET_URL", "http://superset:8088")
-ADMIN_USER   = os.environ.get("SUPERSET_USER", "admin")
-ADMIN_PASS   = os.environ.get("SUPERSET_PASSWORD", "admin")
+ADMIN_USER = os.environ.get("SUPERSET_USER", "admin")
+ADMIN_PASS = os.environ.get("SUPERSET_PASSWORD", "admin")
 
-DB_CONN_STR  = (
+DB_CONN_STR = (
     f"postgresql+psycopg2://{os.environ.get('POSTGRES_USER', 'analytics')}"
     f":{os.environ.get('POSTGRES_PASSWORD', 'analytics')}"
     f"@{os.environ.get('POSTGRES_HOST', 'postgres')}:5432"
@@ -96,22 +96,26 @@ SAVED_QUERIES = [
 
 class SupersetClient:
     def __init__(self, base_url: str, username: str, password: str):
-        self.base    = base_url.rstrip("/")
+        self.base = base_url.rstrip("/")
         self.session = requests.Session()
         self._login(username, password)
 
     def _login(self, username: str, password: str) -> None:
         r = self.session.post(
             f"{self.base}/api/v1/security/login",
-            json={"username": username, "password": password,
-                  "provider": "db", "refresh": True},
+            json={
+                "username": username,
+                "password": password,
+                "provider": "db",
+                "refresh": True,
+            },
         )
         r.raise_for_status()
         self.session.headers["Authorization"] = f"Bearer {r.json()['access_token']}"
         r = self.session.get(f"{self.base}/api/v1/security/csrf_token/")
         r.raise_for_status()
         self.session.headers["X-CSRFToken"] = r.json()["result"]
-        self.session.headers["Referer"]     = self.base
+        self.session.headers["Referer"] = self.base
         log.info("Superset login successful")
 
     def post(self, path: str, payload: dict) -> dict:
@@ -142,24 +146,24 @@ def wait_for_superset(max_wait: int = 180) -> None:
 
 def get_or_create_database(client: SupersetClient) -> int:
     payload = {
-        "database_name":    "football_db",
-        "sqlalchemy_uri":   DB_CONN_STR,
+        "database_name": "football_db",
+        "sqlalchemy_uri": DB_CONN_STR,
         "expose_in_sqllab": True,
-        "allow_run_async":  False,
-        "allow_ctas":       False,
-        "allow_cvas":       False,
-        "allow_dml":        False,
+        "allow_run_async": False,
+        "allow_ctas": False,
+        "allow_cvas": False,
+        "allow_dml": False,
     }
     try:
         result = client.post("/api/v1/database/", payload)
-        db_id  = result["id"]
+        db_id = result["id"]
         log.info("Database connection created: id=%s", db_id)
         return db_id
     except requests.HTTPError as e:
         if e.response.status_code != 422:
             raise
         existing = client.get("/api/v1/database/")
-        matches  = [d for d in existing["result"] if d["database_name"] == "football_db"]
+        matches = [d for d in existing["result"] if d["database_name"] == "football_db"]
         if not matches:
             raise RuntimeError("football_db not found in Superset") from e
         db_id = matches[0]["id"]
@@ -172,9 +176,13 @@ def create_saved_queries(client: SupersetClient, db_id: int) -> None:
         try:
             client.post(
                 "/api/v1/saved_query/",
-                {"db_id": db_id, "label": q["label"],
-                 "description": q["description"],
-                 "sql": q["sql"].strip(), "schema": q["schema"]},
+                {
+                    "db_id": db_id,
+                    "label": q["label"],
+                    "description": q["description"],
+                    "sql": q["sql"].strip(),
+                    "schema": q["schema"],
+                },
             )
             log.info("Saved query: %s", q["label"])
         except requests.HTTPError as e:
@@ -184,7 +192,7 @@ def create_saved_queries(client: SupersetClient, db_id: int) -> None:
 def run() -> None:
     wait_for_superset()
     client = SupersetClient(SUPERSET_URL, ADMIN_USER, ADMIN_PASS)
-    db_id  = get_or_create_database(client)
+    db_id = get_or_create_database(client)
     create_saved_queries(client, db_id)
     log.info("Superset initialisation complete.")
 

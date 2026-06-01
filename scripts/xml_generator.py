@@ -23,10 +23,10 @@ DB_URL = (
     f"/{os.environ['POSTGRES_DB']}"
 )
 
-REPORT_DIR  = "/opt/airflow/reports"
-CLIP_LEAD   = 5   # seconds before event
-CLIP_TRAIL  = 10  # seconds after event
-TOP_N       = 25
+REPORT_DIR = "/opt/airflow/reports"
+CLIP_LEAD = 5  # seconds before event
+CLIP_TRAIL = 10  # seconds after event
+TOP_N = 25
 
 
 def get_engine():
@@ -63,7 +63,7 @@ def fetch_top_events(engine, match_id: int) -> pd.DataFrame:
 def _timecode(minute: int, second: int, offset_sec: int = 0) -> str:
     total = timedelta(minutes=int(minute), seconds=int(second) + offset_sec)
     h, rem = divmod(int(total.total_seconds()), 3600)
-    m, s   = divmod(rem, 60)
+    m, s = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}.00"
 
 
@@ -72,9 +72,9 @@ def build_xml(events: pd.DataFrame, match_id: int) -> ET.Element:
 
     # Header
     header = ET.SubElement(root, "header")
-    ET.SubElement(header, "version").text         = "1.0"
+    ET.SubElement(header, "version").text = "1.0"
     ET.SubElement(header, "source_application").text = "xForge"
-    ET.SubElement(header, "match_id").text        = str(match_id)
+    ET.SubElement(header, "match_id").text = str(match_id)
 
     # Code window definitions
     all_instances = ET.SubElement(root, "ALL_INSTANCES")
@@ -82,13 +82,13 @@ def build_xml(events: pd.DataFrame, match_id: int) -> ET.Element:
     for rank, (_, row) in enumerate(events.iterrows(), start=1):
         instance = ET.SubElement(all_instances, "instance")
 
-        ET.SubElement(instance, "ID").text    = str(rank)
-        ET.SubElement(instance, "uuid").text  = str(row["event_id"])
+        ET.SubElement(instance, "ID").text = str(rank)
+        ET.SubElement(instance, "uuid").text = str(row["event_id"])
 
         start_tc = _timecode(row["minute"], row["second"], offset_sec=-CLIP_LEAD)
-        end_tc   = _timecode(row["minute"], row["second"], offset_sec=CLIP_TRAIL)
+        end_tc = _timecode(row["minute"], row["second"], offset_sec=CLIP_TRAIL)
         ET.SubElement(instance, "start").text = start_tc
-        ET.SubElement(instance, "end").text   = end_tc
+        ET.SubElement(instance, "end").text = end_tc
 
         label = ET.SubElement(instance, "label")
         ET.SubElement(label, "text").text = (
@@ -98,8 +98,16 @@ def build_xml(events: pd.DataFrame, match_id: int) -> ET.Element:
 
         # Custom metadata
         meta = ET.SubElement(instance, "metadata")
-        for key in ("event_type", "player_name", "team_name",
-                    "loc_x", "loc_y", "xt_value", "xp_value", "under_pressure"):
+        for key in (
+            "event_type",
+            "player_name",
+            "team_name",
+            "loc_x",
+            "loc_y",
+            "xt_value",
+            "xp_value",
+            "under_pressure",
+        ):
             val = row.get(key, "")
             ET.SubElement(meta, key).text = "" if pd.isna(val) else str(val)
 
@@ -138,4 +146,5 @@ def run(match_id: int) -> str:
 
 if __name__ == "__main__":
     import sys
+
     run(int(sys.argv[1]))

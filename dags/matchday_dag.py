@@ -16,21 +16,22 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 DEFAULT_ARGS = {
-    "owner":            "analytics",
-    "retries":          1,
-    "retry_delay":      timedelta(minutes=5),
+    "owner": "analytics",
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
     "email_on_failure": False,
-    "email_on_retry":   False,
+    "email_on_retry": False,
 }
 
 SCRIPT_DIR = "/opt/airflow/scripts"
 REPORT_DIR = "/opt/airflow/reports"
-RECIPIENT  = os.environ.get("REPORT_RECIPIENT", "analyst@yourclub.com")
-SMTP_USER  = os.environ.get("SMTP_USER", "")
+RECIPIENT = os.environ.get("REPORT_RECIPIENT", "analyst@yourclub.com")
+SMTP_USER = os.environ.get("SMTP_USER", "")
 
 
 def generate_pdf(**context):
     import sys
+
     sys.path.insert(0, SCRIPT_DIR)
     import report_generator
 
@@ -45,25 +46,32 @@ def generate_pdf(**context):
 
 def generate_xml(**context):
     import sys
+
     sys.path.insert(0, SCRIPT_DIR)
     import xml_generator
 
     match_id = context["dag_run"].conf.get("match_id")
-    path     = xml_generator.run(int(match_id))
+    path = xml_generator.run(int(match_id))
     context["ti"].xcom_push(key="xml_path", value=path)
 
 
 def send_report_email(**context):
     import logging
+
     log = logging.getLogger(__name__)
 
     if not SMTP_USER or SMTP_USER == "placeholder@gmail.com":
         log.warning("SMTP not configured — skipping email send (mock mode)")
-        log.info("PDF: %s", context["ti"].xcom_pull(task_ids="generate_pdf", key="pdf_path"))
-        log.info("XML: %s", context["ti"].xcom_pull(task_ids="generate_xml", key="xml_path"))
+        log.info(
+            "PDF: %s", context["ti"].xcom_pull(task_ids="generate_pdf", key="pdf_path")
+        )
+        log.info(
+            "XML: %s", context["ti"].xcom_pull(task_ids="generate_xml", key="xml_path")
+        )
         return
 
     from airflow.utils.email import send_email
+
     pdf_path = context["ti"].xcom_pull(task_ids="generate_pdf", key="pdf_path")
     xml_path = context["ti"].xcom_pull(task_ids="generate_xml", key="xml_path")
     match_id = context["dag_run"].conf.get("match_id")

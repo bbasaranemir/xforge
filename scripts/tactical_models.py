@@ -29,9 +29,9 @@ DB_URL = (
     f"/{os.environ['POSTGRES_DB']}"
 )
 
-SET_PIECE_TYPES  = ("Corner", "Shot")
-PRESS_TYPES      = ("Pressure", "Interception", "Tackle", "Block")
-N_CLUSTERS       = 6
+SET_PIECE_TYPES = ("Corner", "Shot")
+PRESS_TYPES = ("Pressure", "Interception", "Tackle", "Block")
+N_CLUSTERS = 6
 PRESS_WINDOW_SEC = 5
 
 
@@ -40,6 +40,7 @@ def get_engine():
 
 
 # ─── Set-piece clustering ─────────────────────────────────────────────────────
+
 
 def fetch_set_pieces(engine) -> pd.DataFrame:
     """
@@ -82,15 +83,15 @@ def cluster_set_pieces(df: pd.DataFrame) -> dict:
             log.warning("Not enough %s events for clustering (%d)", et, len(subset))
             continue
 
-        coords  = subset[["location_x", "location_y"]].values
-        scaler  = StandardScaler()
-        scaled  = scaler.fit_transform(coords)
+        coords = subset[["location_x", "location_y"]].values
+        scaler = StandardScaler()
+        scaled = scaler.fit_transform(coords)
 
-        km      = KMeans(n_clusters=N_CLUSTERS, n_init=10, random_state=42)
-        labels  = km.fit_predict(scaled)
+        km = KMeans(n_clusters=N_CLUSTERS, n_init=10, random_state=42)
+        labels = km.fit_predict(scaled)
         centers = scaler.inverse_transform(km.cluster_centers_)
 
-        subset  = subset.copy()
+        subset = subset.copy()
         subset["cluster_label"] = labels
         results[et] = (subset, centers)
 
@@ -111,13 +112,15 @@ def save_clusters(engine, cluster_results: dict) -> None:
         for et, (subset, centers) in cluster_results.items():
             for label, center in enumerate(centers):
                 count = int((subset["cluster_label"] == label).sum())
-                rows.append({
-                    "event_type":    et,
-                    "cluster_label": label,
-                    "center_x":      round(float(center[0]), 2),
-                    "center_y":      round(float(center[1]), 2),
-                    "member_count":  count,
-                })
+                rows.append(
+                    {
+                        "event_type": et,
+                        "cluster_label": label,
+                        "center_x": round(float(center[0]), 2),
+                        "center_y": round(float(center[1]), 2),
+                        "member_count": count,
+                    }
+                )
 
         if rows:
             conn.execute(
@@ -133,6 +136,7 @@ def save_clusters(engine, cluster_results: dict) -> None:
 
 
 # ─── Press trigger detection ─────────────────────────────────────────────────
+
 
 def fetch_press_candidates(engine) -> pd.DataFrame:
     """Fetch all defensive + recovery actions ordered by match and time."""
@@ -159,7 +163,7 @@ def detect_press_triggers(df: pd.DataFrame) -> pd.DataFrame:
     triggered = []
 
     for (match_id, team_id), group in df.groupby(["match_id", "team_id"]):
-        group    = group.sort_values("time_sec").reset_index(drop=True)
+        group = group.sort_values("time_sec").reset_index(drop=True)
         recovery = group[group["event_type"] == "Ball Recovery"]
 
         for _, rec in recovery.iterrows():
@@ -189,10 +193,11 @@ def save_press_metadata(engine, triggers: pd.DataFrame) -> None:
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
+
 def run() -> None:
     engine = get_engine()
 
-    sp_df    = fetch_set_pieces(engine)
+    sp_df = fetch_set_pieces(engine)
     clusters = cluster_set_pieces(sp_df)
     save_clusters(engine, clusters)
 
