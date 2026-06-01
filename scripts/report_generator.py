@@ -56,7 +56,8 @@ def fetch_xt_surface(engine) -> np.ndarray:
 
 
 def fetch_match_events(engine, match_id: int) -> pd.DataFrame:
-    q = text("""
+    q = text(
+        """
         SELECT fe.event_id, fe.event_type, fe.minute, fe.second,
                fe.location_x, fe.location_y,
                fe.end_location_x, fe.end_location_y,
@@ -66,16 +67,19 @@ def fetch_match_events(engine, match_id: int) -> pd.DataFrame:
         LEFT JOIN dim_players dp ON fe.player_id = dp.player_id
         LEFT JOIN dim_teams   dt ON fe.team_id   = dt.team_id
         WHERE fe.match_id = :mid
-    """)
+    """
+    )
     with engine.connect() as conn:
         return pd.read_sql(q, conn, params={"mid": match_id})
 
 
 def fetch_match_meta(engine, match_id: int) -> dict:
-    q = text("""
+    q = text(
+        """
         SELECT home_team, away_team, home_score, away_score, match_date
         FROM dim_matches WHERE match_id = :mid
-    """)
+    """
+    )
     with engine.connect() as conn:
         row = conn.execute(q, {"mid": match_id}).fetchone()
     return dict(row._mapping) if row else {}
