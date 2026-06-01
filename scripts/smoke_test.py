@@ -8,9 +8,9 @@ Tam ingestion (3000+ maç) çalıştırmadan önce her şeyin doğru çalıştı
     docker compose exec airflow-webserver python /opt/airflow/scripts/smoke_test.py
 """
 
+import logging
 import os
 import sys
-import logging
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -112,8 +112,8 @@ def step_verify():
     log.info("ADIM 7: Sonuclar dogrulaniyor")
     log.info("=" * 60)
 
-    from sqlalchemy import create_engine, text
     import pandas as pd
+    from sqlalchemy import create_engine, text
 
     engine = create_engine(
         f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
