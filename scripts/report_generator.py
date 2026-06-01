@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
-from mplsoccer import Pitch, VerticalPitch
+from mplsoccer import Pitch
 from sqlalchemy import create_engine, text
 
 log = logging.getLogger(__name__)
@@ -96,9 +96,6 @@ def plot_xt_heatmap(grid: np.ndarray, meta: dict) -> plt.Figure:
     pitch = Pitch(pitch_type="statsbomb", pitch_color="#1a1a2e", line_color="#ffffff")
     fig, ax = pitch.draw(figsize=(12, 8))
     fig.set_facecolor("#1a1a2e")
-
-    cell_w = 120 / GRID_COLS
-    cell_h = 80 / GRID_ROWS
 
     im = ax.imshow(
         grid,
