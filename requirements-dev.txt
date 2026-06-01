@@ -4,6 +4,7 @@
 # Testing
 pytest==8.0.0
 pytest-cov==4.1.0
+# apache-airflow==2.8.1  # provided by Docker; install manually for local DAG testing
 
 # Linting & formatting
 black==24.3.0
