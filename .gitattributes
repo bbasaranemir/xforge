@@ -1,0 +1,26 @@
+# Force LF line endings for all text files
+* text=auto eol=lf
+
+# Python — always LF
+*.py text eol=lf
+
+# Shell scripts — always LF
+*.sh text eol=lf
+
+# YAML/JSON/TOML — always LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+
+# SQL — always LF
+*.sql text eol=lf
+
+# Markdown/docs
+*.md text eol=lf
+
+# Binary files — no line ending conversion
+*.png binary
+*.jpg binary
+*.pdf binary
+*.joblib binary
