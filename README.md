@@ -33,7 +33,7 @@ flowchart TD
     end
 
     subgraph DBT["📦 dbt 1.7"]
-        STG["4 staging models\nstg_events · stg_passes · stg_shots"]
+        STG["3 staging models\nstg_events · stg_passes · stg_shots"]
         MART["4 mart models\nplayer_metrics · team_summary\nmatch_summary · competition_leaderboard"]
     end
 
