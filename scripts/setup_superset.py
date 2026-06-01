@@ -89,7 +89,7 @@ CHART_DEFS: list[dict[str, Any]] = [
         },
     },
 
-    # 2 ── Player xT Ranking (bar — categorical, legacy viz)
+    # 2 ── Player xT Ranking (table)
     {
         "name": "Player xT Ranking",
         "sql": """
@@ -103,21 +103,17 @@ GROUP BY dp.player_name
 ORDER BY total_xt DESC
 LIMIT 20
 """.strip(),
-        "viz_type": "bar",
+        "viz_type": "table",
         "params": {
-            "viz_type": "bar",
-            "metrics": [_simple_metric("total_xt", "Total xT")],
-            "groupby": ["player_name"],
-            "adhoc_filters": [],
-            "row_limit": 20,
-            "bar_stacked": False,
-            "show_legend": False,
-            "show_bar_value": True,
-            "reduce_x_ticks": True,
-            "bottom_margin": "auto",
-            "x_ticks_layout": "45°",
+            "viz_type": "table",
+            "all_columns": ["player_name", "total_xt", "actions"],
+            "metrics": [],
+            "percent_metrics": [],
+            "timeseries_limit_metric": None,
             "order_desc": True,
-            "color_scheme": "supersetColors",
+            "row_limit": 20,
+            "include_time": False,
+            "adhoc_filters": [],
         },
     },
 
@@ -151,7 +147,7 @@ ORDER BY total_xt DESC
         },
     },
 
-    # 4 ── Set Piece Delivery Clusters (scatter — legacy viz)
+    # 4 ── Set Piece Delivery Clusters (table)
     {
         "name": "Set Piece Delivery Clusters",
         "sql": """
@@ -162,22 +158,21 @@ SELECT event_type, cluster_label,
 FROM set_piece_clusters
 ORDER BY event_type, cluster_label
 """.strip(),
-        "viz_type": "scatter",
+        "viz_type": "table",
         "params": {
-            "viz_type": "scatter",
-            "x": _simple_metric("x", "Pitch X"),
-            "y": _simple_metric("y", "Pitch Y"),
-            "size": _simple_metric("member_count", "Cluster Size"),
-            "entity": "cluster_label",
-            "series": "event_type",
-            "adhoc_filters": [],
+            "viz_type": "table",
+            "all_columns": ["event_type", "cluster_label", "x", "y", "member_count"],
+            "metrics": [],
+            "percent_metrics": [],
+            "timeseries_limit_metric": None,
+            "order_desc": False,
             "row_limit": 100,
-            "show_legend": True,
-            "max_bubble_size": "25",
+            "include_time": False,
+            "adhoc_filters": [],
         },
     },
 
-    # 5 ── Shot Quality by Zone (bar — legacy viz)
+    # 5 ── Shot Quality by Zone (table)
     {
         "name": "Shot Quality by Zone",
         "sql": """
@@ -195,18 +190,17 @@ WHERE event_type = 'Shot' AND xp_value IS NOT NULL
 GROUP BY zone
 ORDER BY avg_xp DESC
 """.strip(),
-        "viz_type": "bar",
+        "viz_type": "table",
         "params": {
-            "viz_type": "bar",
-            "metrics": [_simple_metric("avg_xp", "Avg xP")],
-            "groupby": ["zone"],
-            "adhoc_filters": [],
-            "row_limit": 10,
-            "bar_stacked": False,
-            "show_legend": False,
-            "show_bar_value": True,
+            "viz_type": "table",
+            "all_columns": ["zone", "shots", "avg_xp"],
+            "metrics": [],
+            "percent_metrics": [],
+            "timeseries_limit_metric": None,
             "order_desc": True,
-            "color_scheme": "supersetColors",
+            "row_limit": 10,
+            "include_time": False,
+            "adhoc_filters": [],
         },
     },
 
@@ -241,7 +235,7 @@ LIMIT 50
         },
     },
 
-    # 7 ── Press Intensity by Team (bar — legacy viz)
+    # 7 ── Press Intensity by Team (table)
     {
         "name": "Press Intensity by Team",
         "sql": """
@@ -255,21 +249,17 @@ GROUP BY dt.team_name
 ORDER BY press_count DESC
 LIMIT 20
 """.strip(),
-        "viz_type": "bar",
+        "viz_type": "table",
         "params": {
-            "viz_type": "bar",
-            "metrics": [_simple_metric("press_count", "Press Count")],
-            "groupby": ["team_name"],
-            "adhoc_filters": [],
-            "row_limit": 20,
-            "bar_stacked": False,
-            "show_legend": False,
-            "show_bar_value": True,
-            "reduce_x_ticks": True,
-            "bottom_margin": "auto",
-            "x_ticks_layout": "45°",
+            "viz_type": "table",
+            "all_columns": ["team_name", "press_count", "avg_minute"],
+            "metrics": [],
+            "percent_metrics": [],
+            "timeseries_limit_metric": None,
             "order_desc": True,
-            "color_scheme": "supersetColors",
+            "row_limit": 20,
+            "include_time": False,
+            "adhoc_filters": [],
         },
     },
 ]
