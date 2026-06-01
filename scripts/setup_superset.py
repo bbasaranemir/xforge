@@ -53,6 +53,17 @@ def _m(col: str, label: str | None = None) -> dict:
 
 
 # ── Chart definitions ─────────────────────────────────────────────────────────
+def _simple_metric(col: str, label: str) -> dict:
+    """SIMPLE aggregate metric — for pre-computed columns use MAX (no-op on single row)."""
+    return {
+        "expressionType": "SIMPLE",
+        "column": {"column_name": col, "type": "DOUBLE PRECISION"},
+        "aggregate": "MAX",
+        "label": label,
+        "hasCustomLabel": True,
+    }
+
+
 CHART_DEFS: list[dict[str, Any]] = [
     # 1 ── xT Surface Heatmap
     {
@@ -67,7 +78,7 @@ CHART_DEFS: list[dict[str, Any]] = [
             "viz_type": "heatmap",
             "all_columns_x": "grid_col",
             "all_columns_y": "grid_row",
-            "metric": _m("xt_value"),
+            "metric": _simple_metric("xt_value", "xT Value"),
             "adhoc_filters": [],
             "row_limit": 500,
             "normalize_across": "heatmap",
@@ -78,7 +89,7 @@ CHART_DEFS: list[dict[str, Any]] = [
         },
     },
 
-    # 2 ── Player xT Ranking (horizontal bar)
+    # 2 ── Player xT Ranking (bar — categorical, legacy viz)
     {
         "name": "Player xT Ranking",
         "sql": """
@@ -92,17 +103,21 @@ GROUP BY dp.player_name
 ORDER BY total_xt DESC
 LIMIT 20
 """.strip(),
-        "viz_type": "echarts_timeseries_bar",
+        "viz_type": "bar",
         "params": {
-            "viz_type": "echarts_timeseries_bar",
-            "x_axis": "player_name",
-            "metrics": [_m("total_xt", "Total xT")],
-            "groupby": [],
+            "viz_type": "bar",
+            "metrics": [_simple_metric("total_xt", "Total xT")],
+            "groupby": ["player_name"],
             "adhoc_filters": [],
             "row_limit": 20,
-            "x_axis_sort_asc": False,
-            "orientation": "horizontal",
+            "bar_stacked": False,
             "show_legend": False,
+            "show_bar_value": True,
+            "reduce_x_ticks": True,
+            "bottom_margin": "auto",
+            "x_ticks_layout": "45°",
+            "order_desc": True,
+            "color_scheme": "supersetColors",
         },
     },
 
@@ -136,7 +151,7 @@ ORDER BY total_xt DESC
         },
     },
 
-    # 4 ── Set Piece Delivery Clusters (scatter)
+    # 4 ── Set Piece Delivery Clusters (scatter — legacy viz)
     {
         "name": "Set Piece Delivery Clusters",
         "sql": """
@@ -147,21 +162,22 @@ SELECT event_type, cluster_label,
 FROM set_piece_clusters
 ORDER BY event_type, cluster_label
 """.strip(),
-        "viz_type": "echarts_scatter",
+        "viz_type": "scatter",
         "params": {
-            "viz_type": "echarts_scatter",
-            "x": _m("x", "Pitch X"),
-            "y": _m("y", "Pitch Y"),
-            "size": _m("member_count", "Cluster Size"),
+            "viz_type": "scatter",
+            "x": _simple_metric("x", "Pitch X"),
+            "y": _simple_metric("y", "Pitch Y"),
+            "size": _simple_metric("member_count", "Cluster Size"),
             "entity": "cluster_label",
             "series": "event_type",
             "adhoc_filters": [],
             "row_limit": 100,
             "show_legend": True,
+            "max_bubble_size": "25",
         },
     },
 
-    # 5 ── Shot Quality by Zone (bar)
+    # 5 ── Shot Quality by Zone (bar — legacy viz)
     {
         "name": "Shot Quality by Zone",
         "sql": """
@@ -179,48 +195,53 @@ WHERE event_type = 'Shot' AND xp_value IS NOT NULL
 GROUP BY zone
 ORDER BY avg_xp DESC
 """.strip(),
-        "viz_type": "echarts_timeseries_bar",
+        "viz_type": "bar",
         "params": {
-            "viz_type": "echarts_timeseries_bar",
-            "x_axis": "zone",
-            "metrics": [_m("avg_xp", "Avg xP")],
-            "groupby": [],
+            "viz_type": "bar",
+            "metrics": [_simple_metric("avg_xp", "Avg xP")],
+            "groupby": ["zone"],
             "adhoc_filters": [],
             "row_limit": 10,
-            "x_axis_sort_asc": False,
+            "bar_stacked": False,
             "show_legend": False,
+            "show_bar_value": True,
+            "order_desc": True,
+            "color_scheme": "supersetColors",
         },
     },
 
-    # 6 ── Match xT Balance — home vs away (grouped bar)
+    # 6 ── Match xT Balance — home vs away (table for reliability)
     {
         "name": "Match xT Balance",
         "sql": """
 SELECT fe.match_id,
        ROUND(SUM(CASE WHEN dt.team_name = dm.home_team THEN fe.xt_value ELSE 0 END)::numeric, 2) AS home_xt,
-       ROUND(SUM(CASE WHEN dt.team_name = dm.away_team THEN fe.xt_value ELSE 0 END)::numeric, 2) AS away_xt
+       ROUND(SUM(CASE WHEN dt.team_name = dm.away_team THEN fe.xt_value ELSE 0 END)::numeric, 2) AS away_xt,
+       ROUND((SUM(CASE WHEN dt.team_name = dm.home_team THEN fe.xt_value ELSE 0 END) -
+              SUM(CASE WHEN dt.team_name = dm.away_team THEN fe.xt_value ELSE 0 END))::numeric, 2) AS xt_diff
 FROM fact_events fe
 JOIN dim_matches dm ON fe.match_id = dm.match_id
 JOIN dim_teams   dt ON fe.team_id  = dt.team_id
 WHERE fe.xt_value IS NOT NULL
 GROUP BY fe.match_id
-ORDER BY fe.match_id
+ORDER BY ABS(xt_diff) DESC
 LIMIT 50
 """.strip(),
-        "viz_type": "echarts_timeseries_bar",
+        "viz_type": "table",
         "params": {
-            "viz_type": "echarts_timeseries_bar",
-            "x_axis": "match_id",
-            "metrics": [_m("home_xt", "Home xT"), _m("away_xt", "Away xT")],
-            "groupby": [],
-            "adhoc_filters": [],
+            "viz_type": "table",
+            "all_columns": ["match_id", "home_xt", "away_xt", "xt_diff"],
+            "metrics": [],
+            "percent_metrics": [],
+            "timeseries_limit_metric": None,
+            "order_desc": True,
             "row_limit": 50,
-            "show_legend": True,
-            "stack": False,
+            "include_time": False,
+            "adhoc_filters": [],
         },
     },
 
-    # 7 ── Press Intensity by Team (horizontal bar)
+    # 7 ── Press Intensity by Team (bar — legacy viz)
     {
         "name": "Press Intensity by Team",
         "sql": """
@@ -234,17 +255,21 @@ GROUP BY dt.team_name
 ORDER BY press_count DESC
 LIMIT 20
 """.strip(),
-        "viz_type": "echarts_timeseries_bar",
+        "viz_type": "bar",
         "params": {
-            "viz_type": "echarts_timeseries_bar",
-            "x_axis": "team_name",
-            "metrics": [_m("press_count", "Press Count")],
-            "groupby": [],
+            "viz_type": "bar",
+            "metrics": [_simple_metric("press_count", "Press Count")],
+            "groupby": ["team_name"],
             "adhoc_filters": [],
             "row_limit": 20,
-            "x_axis_sort_asc": False,
-            "orientation": "horizontal",
+            "bar_stacked": False,
             "show_legend": False,
+            "show_bar_value": True,
+            "reduce_x_ticks": True,
+            "bottom_margin": "auto",
+            "x_ticks_layout": "45°",
+            "order_desc": True,
+            "color_scheme": "supersetColors",
         },
     },
 ]
@@ -371,24 +396,30 @@ def get_or_create_dataset(client: SupersetClient, db_id: int,
 
 def get_or_create_chart(client: SupersetClient, ds_id: int,
                          chart_def: dict[str, Any]) -> int:
-    """Create a chart; return its id (reuse if already exists)."""
-    existing = client.list_all("/api/v1/chart/")
-    for ch in existing:
-        if ch.get("slice_name") == chart_def["name"]:
-            log.info("Chart already exists: %s (id=%s)", chart_def["name"], ch["id"])
-            return ch["id"]
-
+    """Create or update a chart; always sync viz_type + params."""
     params = dict(chart_def["params"])
     params["viz_type"] = chart_def["viz_type"]
-
-    result = client.post("/api/v1/chart/", {
+    payload = {
         "datasource_id":   ds_id,
         "datasource_type": "table",
         "viz_type":        chart_def["viz_type"],
         "params":          json.dumps(params),
         "slice_name":      chart_def["name"],
-        "owners":          [1],
-    })
+    }
+
+    existing = client.list_all("/api/v1/chart/")
+    for ch in existing:
+        if ch.get("slice_name") == chart_def["name"]:
+            chart_id = ch["id"]
+            # Update to sync latest viz_type and params
+            r = client.session.put(f"{client.base}/api/v1/chart/{chart_id}", json=payload)
+            if r.ok:
+                log.info("Chart updated: %s (id=%s)", chart_def["name"], chart_id)
+            else:
+                log.warning("Chart update failed %s: %s", chart_id, r.text[:200])
+            return chart_id
+
+    result = client.post("/api/v1/chart/", payload)
     chart_id = result["id"]
     log.info("Chart created: %s (id=%s)", chart_def["name"], chart_id)
     return chart_id
