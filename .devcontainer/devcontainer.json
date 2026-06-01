@@ -1,4 +1,4 @@
 {
   "name": "xForge",
-  "postStartCommand": "docker compose up -d && sleep 15 && docker compose exec -T --user root airflow-scheduler chmod -R 777 /opt/airflow/reports && nohup docker compose exec -T airflow-scheduler python /opt/airflow/scripts/predictive_models.py >> /tmp/xp_autostart.log 2>&1 &"
+  "postStartCommand": "docker compose up -d && sleep 15 && docker compose exec -T --user root airflow-scheduler chmod -R 777 /opt/airflow/reports && nohup docker compose exec -T airflow-scheduler python /opt/airflow/scripts/predictive_models.py >> /tmp/xp_autostart.log 2>&1 & nohup docker compose exec -T airflow-scheduler python /opt/airflow/scripts/setup_superset.py >> /tmp/superset_setup.log 2>&1 &"
 }
