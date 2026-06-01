@@ -1,3 +1,6 @@
+# NOTE: apache-airflow==2.8.1 is provided by the Docker image (Dockerfile.airflow).
+# Scripts in this repo run inside the airflow-scheduler container.
+# To run locally without Docker, install: pip install apache-airflow==2.8.1
 statsbombpy==1.18.0
 pandas==2.1.4
 numpy==1.26.3
