@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from typing import Any
 
 import requests
@@ -284,7 +285,9 @@ class SupersetClient:
 
     def put(self, path: str, payload: dict) -> dict:
         r = self.session.put(f"{self.base}{path}", json=payload)
-        r.raise_for_status()
+        if not r.ok:
+            log.error("PUT %s → %s: %s", path, r.status_code, r.text[:800])
+            r.raise_for_status()
         return r.json()
 
     def list_all(self, path: str) -> list[dict]:
@@ -391,10 +394,15 @@ def get_or_create_chart(client: SupersetClient, ds_id: int,
     return chart_id
 
 
+def _uid() -> str:
+    return uuid.uuid4().hex[:8].upper()
+
+
 def build_position_data(chart_ids: list[int]) -> dict:
     """
-    Generate dashboard position_data for a simple 2-column layout.
-    Chart 1 (heatmap) gets its own full-width row; the rest pair up.
+    Generate dashboard position_data for a 2-column layout.
+    Chart 1 (heatmap) gets a full-width row; the rest pair up.
+    Slot IDs use random hex so Superset's schema validator accepts them.
     """
     pos: dict[str, Any] = {
         "DASHBOARD_VERSION_KEY": "v2",
@@ -408,33 +416,31 @@ def build_position_data(chart_ids: list[int]) -> dict:
         },
     }
 
-    def add_row(row_id: str, parent_chain: list[str],
-                charts: list[int], width: int = 6) -> None:
+    def add_row(charts: list[int], width: int) -> None:
+        row_id = f"ROW-{_uid()}"
         pos["GRID_ID"]["children"].append(row_id)
-        children_ids: list[str] = []
+        slot_ids: list[str] = []
         for cid in charts:
-            slot = f"CHART-{cid}"
-            children_ids.append(slot)
-            pos[slot] = {
-                "type": "CHART", "id": slot, "children": [],
-                "parents": parent_chain + [row_id],
-                "meta": {"chartId": cid, "width": width, "height": 50},
+            slot_id = f"CHART-{_uid()}"
+            slot_ids.append(slot_id)
+            pos[slot_id] = {
+                "type": "CHART", "id": slot_id, "children": [],
+                "parents": ["ROOT_ID", "GRID_ID", row_id],
+                "meta": {"chartId": cid, "width": width, "height": 50, "sliceName": ""},
             }
         pos[row_id] = {
             "type": "ROW", "id": row_id,
-            "children": children_ids,
-            "parents": parent_chain,
+            "children": slot_ids,
+            "parents": ["ROOT_ID", "GRID_ID"],
             "meta": {"background": "BACKGROUND_TRANSPARENT"},
         }
 
-    chain = ["ROOT_ID", "GRID_ID"]
-    # Row 1: first chart full-width (heatmap)
-    add_row("ROW-1", chain, [chart_ids[0]], width=12)
-    # Remaining charts in 2-col pairs
+    # Row 1: heatmap — full width
+    add_row([chart_ids[0]], width=12)
+    # Remaining: 2-column pairs
     rest = chart_ids[1:]
     for i in range(0, len(rest), 2):
-        row_num = i // 2 + 2
-        add_row(f"ROW-{row_num}", chain, rest[i : i + 2], width=6)
+        add_row(rest[i : i + 2], width=6)
 
     return pos
 
@@ -447,8 +453,10 @@ def get_or_create_dashboard(client: SupersetClient,
         if db.get("dashboard_title") == DASHBOARD_TITLE:
             dash_id = db["id"]
             log.info("Dashboard already exists: id=%s — updating layout", dash_id)
+            pos = build_position_data(chart_ids)
+            log.debug("position_data: %s", json.dumps(pos, indent=2))
             client.put(f"/api/v1/dashboard/{dash_id}", {
-                "position_data": json.dumps(build_position_data(chart_ids)),
+                "position_data": json.dumps(pos),
                 "published":     True,
             })
             return dash_id
