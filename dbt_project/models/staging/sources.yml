@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: public
+    database: football_analytics
+    schema: public
+    tables:
+      - name: dim_competitions
+      - name: dim_matches
+      - name: dim_players
+      - name: dim_teams
+      - name: fact_events
+      - name: ingested_matches
+      - name: xt_surface
+      - name: set_piece_clusters
+      - name: model_registry
