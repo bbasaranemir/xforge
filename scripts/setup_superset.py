@@ -277,7 +277,9 @@ class SupersetClient:
 
     def post(self, path: str, payload: dict) -> dict:
         r = self.session.post(f"{self.base}{path}", json=payload)
-        r.raise_for_status()
+        if not r.ok:
+            log.error("POST %s → %s: %s", path, r.status_code, r.text[:500])
+            r.raise_for_status()
         return r.json()
 
     def put(self, path: str, payload: dict) -> dict:
@@ -444,22 +446,26 @@ def get_or_create_dashboard(client: SupersetClient,
     for db in existing:
         if db.get("dashboard_title") == DASHBOARD_TITLE:
             dash_id = db["id"]
-            log.info("Dashboard already exists: id=%s — updating charts", dash_id)
+            log.info("Dashboard already exists: id=%s — updating layout", dash_id)
             client.put(f"/api/v1/dashboard/{dash_id}", {
                 "position_data": json.dumps(build_position_data(chart_ids)),
-                "json_metadata":  json.dumps({"refresh_frequency": 0, "color_scheme": ""}),
+                "published":     True,
             })
             return dash_id
 
+    # Step 1: create with minimal payload
     result = client.post("/api/v1/dashboard/", {
         "dashboard_title": DASHBOARD_TITLE,
-        "published":        True,
-        "position_data":    json.dumps(build_position_data(chart_ids)),
-        "json_metadata":    json.dumps({"refresh_frequency": 0, "color_scheme": ""}),
-        "owners":           [1],
+        "published":       False,
     })
     dash_id = result["id"]
     log.info("Dashboard created: %s (id=%s)", DASHBOARD_TITLE, dash_id)
+
+    # Step 2: update with chart layout
+    client.put(f"/api/v1/dashboard/{dash_id}", {
+        "position_data": json.dumps(build_position_data(chart_ids)),
+    })
+    log.info("Dashboard layout set: %d charts", len(chart_ids))
     return dash_id
 
 
