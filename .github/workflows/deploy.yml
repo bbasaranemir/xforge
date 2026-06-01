@@ -119,7 +119,7 @@ jobs:
           cache: pip
 
       - name: Install dbt
-        run: pip install dbt-postgres==1.7.4
+        run: pip install dbt-postgres==1.7.4 "protobuf<5"
 
       - name: Apply schema
         run: |
