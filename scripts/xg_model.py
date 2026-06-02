@@ -53,8 +53,8 @@ MODEL_PATH = "/opt/airflow/reports/xg_model.joblib"
 PITCH_X = 120.0
 PITCH_Y = 80.0
 GOAL_CENTER = (120.0, 40.0)
-TRAIN_SAMPLE = 80_000   # shots are fewer than passes (~150k total) — 80k is sufficient
-WRITE_CHUNK = 50_000    # rows per commit — consistent with xP pipeline
+TRAIN_SAMPLE = 80_000  # shots are fewer than passes (~150k total) — 80k is sufficient
+WRITE_CHUNK = 50_000  # rows per commit — consistent with xP pipeline
 
 
 def get_engine():
@@ -149,10 +149,12 @@ def build_features(df: pd.DataFrame) -> tuple:
     # Shots directly in front of goal → small angle; wide angles → harder.
     dx = GOAL_CENTER[0] - df["location_x"]
     dy = GOAL_CENTER[1] - df["location_y"]
-    goal_width = 7.32   # metres; StatsBomb pitch scale ≈ 1 unit per metre
+    goal_width = 7.32  # metres; StatsBomb pitch scale ≈ 1 unit per metre
     # Half-angle subtended by the goal from the shot location
-    dist = np.sqrt(dx ** 2 + dy ** 2).replace(0, np.nan)
-    df["angle_to_goal"] = np.arctan(goal_width * dx / (dx ** 2 + dy ** 2 - (goal_width / 2) ** 2))
+    dist = np.sqrt(dx**2 + dy**2).replace(0, np.nan)
+    df["angle_to_goal"] = np.arctan(
+        goal_width * dx / (dx**2 + dy**2 - (goal_width / 2) ** 2)
+    )
     df["angle_to_goal"] = df["angle_to_goal"].abs().fillna(0.0)
 
     df["under_pressure"] = df["under_pressure"].astype(int)
@@ -185,7 +187,12 @@ def train(X, y) -> tuple:
     n_neg = int((y == 0).sum())
     n_pos = int((y == 1).sum())
     spw = round(n_neg / max(n_pos, 1), 2)
-    log.info("Class balance: %d goals / %d non-goals → scale_pos_weight=%.2f", n_pos, n_neg, spw)
+    log.info(
+        "Class balance: %d goals / %d non-goals → scale_pos_weight=%.2f",
+        n_pos,
+        n_neg,
+        spw,
+    )
 
     X_tr, X_val, y_tr, y_val = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
@@ -273,7 +280,9 @@ def run() -> None:
     if os.path.exists(MODEL_PATH):
         with engine.connect() as conn:
             remaining = conn.execute(
-                text(f"SELECT COUNT(*) FROM fact_events WHERE {SHOT_WHERE} AND xg_value IS NULL")
+                text(
+                    f"SELECT COUNT(*) FROM fact_events WHERE {SHOT_WHERE} AND xg_value IS NULL"
+                )
             ).scalar()
         if remaining == 0:
             log.info("xG already complete (model exists, 0 rows remaining) — skipping.")
