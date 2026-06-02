@@ -151,7 +151,6 @@ def build_features(df: pd.DataFrame) -> tuple:
     dy = GOAL_CENTER[1] - df["location_y"]
     goal_width = 7.32  # metres; StatsBomb pitch scale ≈ 1 unit per metre
     # Half-angle subtended by the goal from the shot location
-    dist = np.sqrt(dx**2 + dy**2).replace(0, np.nan)
     df["angle_to_goal"] = np.arctan(
         goal_width * dx / (dx**2 + dy**2 - (goal_width / 2) ** 2)
     )
