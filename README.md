@@ -13,6 +13,18 @@
 
 ---
 
+## Dashboard Previews
+
+| xT Surface Heatmap | Player xT Ranking |
+|---|---|
+| ![xT Heatmap](docs/screenshots/xt_heatmap.png) | ![Player xT Ranking](docs/screenshots/player_xt_ranking.png) |
+
+| Match xT Balance (Home vs Away) | PDF Match Report |
+|---|---|
+| ![Match xT Balance](docs/screenshots/match_xt_balance.png) | ![PDF Report](docs/screenshots/pdf_report.png) |
+
+---
+
 ## Architecture
 
 ```mermaid
