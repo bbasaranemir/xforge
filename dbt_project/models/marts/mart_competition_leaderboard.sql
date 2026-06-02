@@ -11,6 +11,9 @@ with player_comp as (
         round(avg(fe.xp_value)::numeric, 4)                  as avg_xp,
         -- xg_value populated only for shots; sum ignores NULLs
         round(sum(coalesce(fe.xg_value, 0))::numeric, 4)     as total_xg,
+        count(*) filter (
+            where fe.event_type = 'Shot' and fe.outcome = 'Goal'
+        )                                                     as total_goals,
         count(distinct fe.match_id)                          as matches_played
     from {{ ref('stg_events') }} fe
     where fe.player_id is not null
@@ -27,6 +30,9 @@ select
     pc.total_shots,
     pc.avg_xp,
     pc.total_xg,
+    pc.total_goals,
+    -- finishing_quality: positive = clinical finisher (goals > xG expectation)
+    round((pc.total_goals - pc.total_xg)::numeric, 4)                       as finishing_quality,
     pc.matches_played,
     -- per-match normalisation prevents high-volume players dominating leaderboard
     round(

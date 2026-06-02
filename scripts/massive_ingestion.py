@@ -59,13 +59,11 @@ def upsert_competitions(engine, competitions: pd.DataFrame) -> None:
     )
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO dim_competitions (competition_id, competition_name, country_name)
                 VALUES (:competition_id, :competition_name, :country_name)
                 ON CONFLICT (competition_id) DO NOTHING
-            """
-            ),
+            """),
             records,
         )
     log.info("dim_competitions: %d rows upserted", len(records))
@@ -79,13 +77,11 @@ def upsert_seasons(engine, competitions: pd.DataFrame) -> None:
     )
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO dim_seasons (season_id, season_name)
                 VALUES (:season_id, :season_name)
                 ON CONFLICT (season_id) DO NOTHING
-            """
-            ),
+            """),
             records,
         )
 
@@ -93,8 +89,7 @@ def upsert_seasons(engine, competitions: pd.DataFrame) -> None:
 def upsert_match(engine, row: pd.Series) -> None:
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO dim_matches
                     (match_id, competition_id, season_id, match_date,
                      home_team, away_team, home_score, away_score, stage)
@@ -102,8 +97,7 @@ def upsert_match(engine, row: pd.Series) -> None:
                     (:match_id, :competition_id, :season_id, :match_date,
                      :home_team, :away_team, :home_score, :away_score, :stage)
                 ON CONFLICT (match_id) DO NOTHING
-            """
-            ),
+            """),
             {
                 "match_id": int(row["match_id"]),
                 "competition_id": int(row["competition_id"]),
@@ -133,13 +127,11 @@ def upsert_teams(engine, events: pd.DataFrame) -> None:
     teams["team_id"] = teams["team_id"].astype(int)
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO dim_teams (team_id, team_name, country)
                 VALUES (:team_id, :team_name, :country)
                 ON CONFLICT (team_id) DO NOTHING
-            """
-            ),
+            """),
             teams.to_dict("records"),
         )
 
@@ -158,13 +150,11 @@ def upsert_players(engine, events: pd.DataFrame) -> None:
     )
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO dim_players (player_id, player_name, nationality, position)
                 VALUES (:player_id, :player_name, :nationality, :position)
                 ON CONFLICT (player_id) DO NOTHING
-            """
-            ),
+            """),
             players.to_dict("records"),
         )
 
@@ -300,13 +290,11 @@ def mark_ingested(
 ) -> None:
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO ingested_matches (match_id, competition_id, event_count, status)
                 VALUES (:mid, :cid, :cnt, :status)
                 ON CONFLICT (match_id) DO UPDATE SET status = EXCLUDED.status, ingested_at = NOW()
-            """
-            ),
+            """),
             {
                 "mid": match_id,
                 "cid": competition_id,

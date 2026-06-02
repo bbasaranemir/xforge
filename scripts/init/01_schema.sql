@@ -134,6 +134,8 @@ CREATE INDEX IF NOT EXISTS idx_fe_player      ON fact_events (player_id, competi
 CREATE INDEX IF NOT EXISTS idx_fe_type        ON fact_events (event_type, competition_id);
 CREATE INDEX IF NOT EXISTS idx_fe_xt          ON fact_events (xt_value, competition_id)
     WHERE xt_value IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_fe_xp          ON fact_events (xp_value, competition_id)
+    WHERE xp_value IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_fe_xg          ON fact_events (xg_value, competition_id)
     WHERE xg_value IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ingested_comp  ON ingested_matches (competition_id);

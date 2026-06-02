@@ -91,16 +91,14 @@ SHOT_WHERE = """
 
 def fetch_shots_sample(engine) -> pd.DataFrame:
     """Load a stratified random sample for training (memory-safe)."""
-    q = text(
-        f"""
+    q = text(f"""
         SELECT event_id, location_x, location_y,
                outcome, under_pressure, minute
         FROM fact_events
         WHERE {SHOT_WHERE}
         ORDER BY RANDOM()
         LIMIT {TRAIN_SAMPLE}
-        """
-    )
+        """)
     with engine.connect() as conn:
         df = pd.read_sql(q, conn)
     log.info("Training sample loaded: %d shots", len(df))
@@ -112,15 +110,13 @@ def stream_shots_for_prediction(model):
     conn = psycopg2.connect(**_conn_params())
     conn.autocommit = False
     cur = conn.cursor("xg_pred_cur")
-    cur.execute(
-        f"""
+    cur.execute(f"""
         SELECT event_id, location_x, location_y,
                outcome, under_pressure, minute
         FROM fact_events
         WHERE {SHOT_WHERE}
           AND xg_value IS NULL
-        """
-    )
+        """)
     while True:
         rows = cur.fetchmany(WRITE_CHUNK)
         if not rows:
@@ -243,12 +239,10 @@ def save_model(engine, model, metrics: dict, feature_cols: list) -> None:
 
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO model_registry (model_name, version, metrics, artifact_path)
                 VALUES ('xg_model', '1.0', :m, :path)
-                """
-            ),
+                """),
             {"m": json.dumps(metrics), "path": MODEL_PATH},
         )
     log.info("xG model saved: %s", MODEL_PATH)

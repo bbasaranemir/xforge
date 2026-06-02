@@ -23,6 +23,7 @@ GOAL_CENTER = (120.0, 40.0)
 
 # ── Replicated build_features ─────────────────────────────────────────────────
 
+
 def build_features(df: pd.DataFrame):
     """Pure feature engineering — identical logic to xg_model.build_features."""
     df = df.copy()
@@ -39,7 +40,7 @@ def build_features(df: pd.DataFrame):
     dy = GOAL_CENTER[1] - df["location_y"]
     goal_width = 7.32
     df["angle_to_goal"] = np.arctan(
-        goal_width * dx / (dx ** 2 + dy ** 2 - (goal_width / 2) ** 2)
+        goal_width * dx / (dx**2 + dy**2 - (goal_width / 2) ** 2)
     )
     df["angle_to_goal"] = df["angle_to_goal"].abs().fillna(0.0)
 
@@ -59,6 +60,7 @@ def build_features(df: pd.DataFrame):
 
 # ── Replicated train ──────────────────────────────────────────────────────────
 
+
 def train(X, y):
     """XGBoost training with dynamic scale_pos_weight — mirrors xg_model.train."""
     from sklearn.metrics import log_loss, roc_auc_score
@@ -73,7 +75,7 @@ def train(X, y):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     model = XGBClassifier(
-        n_estimators=50,          # fewer trees for fast tests
+        n_estimators=50,  # fewer trees for fast tests
         max_depth=3,
         learning_rate=0.1,
         scale_pos_weight=spw,
@@ -95,6 +97,7 @@ def train(X, y):
 
 # ── Fixture ───────────────────────────────────────────────────────────────────
 
+
 def _make_shots(n: int = 400) -> pd.DataFrame:
     rng = np.random.default_rng(7)
     outcomes = rng.choice(
@@ -102,17 +105,20 @@ def _make_shots(n: int = 400) -> pd.DataFrame:
         size=n,
         p=[0.11, 0.40, 0.20, 0.18, 0.05, 0.06],
     )
-    return pd.DataFrame({
-        "event_id":       [str(i) for i in range(n)],
-        "location_x":     rng.uniform(60, 120, n),
-        "location_y":     rng.uniform(5, 75, n),
-        "outcome":        outcomes,
-        "under_pressure": rng.choice([True, False], n),
-        "minute":         rng.integers(0, 95, n),
-    })
+    return pd.DataFrame(
+        {
+            "event_id": [str(i) for i in range(n)],
+            "location_x": rng.uniform(60, 120, n),
+            "location_y": rng.uniform(5, 75, n),
+            "outcome": outcomes,
+            "under_pressure": rng.choice([True, False], n),
+            "minute": rng.integers(0, 95, n),
+        }
+    )
 
 
 # ── Tests: build_features ─────────────────────────────────────────────────────
+
 
 def test_build_features_shape():
     df = _make_shots()
@@ -126,7 +132,12 @@ def test_build_features_four_columns():
     df = _make_shots()
     _, _, _, cols = build_features(df)
     assert len(cols) == 4
-    assert set(cols) == {"distance_to_goal", "angle_to_goal", "under_pressure", "minute_bin"}
+    assert set(cols) == {
+        "distance_to_goal",
+        "angle_to_goal",
+        "under_pressure",
+        "minute_bin",
+    }
 
 
 def test_target_binary():
@@ -172,6 +183,7 @@ def test_minute_bin_three_levels():
 
 # ── Tests: train ──────────────────────────────────────────────────────────────
 
+
 def test_train_returns_metrics():
     df = _make_shots(400)
     X, y, _, _ = build_features(df)
@@ -189,3 +201,27 @@ def test_scale_pos_weight_above_one():
     X, y, _, _ = build_features(df)
     _, metrics = train(X, y)
     assert metrics["scale_pos_weight"] > 1.0
+
+
+def test_angle_non_negative():
+    """Angle to goal must always be >= 0 (abs() applied in build_features)."""
+    df = _make_shots()
+    X, _, _, cols = build_features(df)
+    angles = X[:, cols.index("angle_to_goal")]
+    assert (angles >= 0).all()
+
+
+def test_build_features_ids_length():
+    """ids array length must equal input DataFrame length."""
+    n = 150
+    df = _make_shots(n)
+    _, _, ids, _ = build_features(df)
+    assert len(ids) == n
+
+
+def test_goal_rate_reasonable():
+    """Fixture goal rate should sit in a realistic football range (5–25%)."""
+    df = _make_shots(600)
+    _, y, _, _ = build_features(df)
+    goal_rate = y.mean()
+    assert 0.05 < goal_rate < 0.25, f"Unexpected goal rate: {goal_rate:.3f}"

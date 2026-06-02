@@ -34,8 +34,7 @@ def get_engine():
 
 
 def fetch_top_events(engine, match_id: int) -> pd.DataFrame:
-    q = text(
-        """
+    q = text("""
         SELECT
             fe.event_id,
             fe.event_type,
@@ -56,8 +55,7 @@ def fetch_top_events(engine, match_id: int) -> pd.DataFrame:
           AND fe.event_type IN ('Pass', 'Carry', 'Shot')
         ORDER BY fe.xt_value DESC
         LIMIT :n
-    """
-    )
+    """)
     with engine.connect() as conn:
         return pd.read_sql(q, conn, params={"mid": match_id, "n": TOP_N})
 
