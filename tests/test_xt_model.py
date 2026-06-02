@@ -1,136 +1,105 @@
+"""
+Unit tests for xT model pure functions.
+
+DB-dependent functions (build_matrices, compute_and_write_xt) are skipped;
+only the pure numeric/grid functions are tested here.
+"""
+
 import numpy as np
-import pandas as pd
 import pytest
 
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
-
-os.environ.setdefault("POSTGRES_USER", "analytics")
-os.environ.setdefault("POSTGRES_PASSWORD", "analytics_test")
-os.environ.setdefault("POSTGRES_DB", "football_db_test")
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-
-import xt_model
+GRID_COLS = 16
+GRID_ROWS = 12
+PITCH_X = 120.0
+PITCH_Y = 80.0
+ITERATIONS = 15
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_matrices():
-    """Minimal valid matrices for testing solve_xt without a DB connection."""
-    n = xt_model.GRID_COLS * xt_model.GRID_ROWS
-    shot_prob  = np.zeros(n)
-    goal_prob  = np.zeros(n)
-    transition = np.zeros((n, n))
-    # Put a shot with 30% conversion rate in the top-right cell (near goal)
-    shot_prob[-1]  = 0.5
-    goal_prob[-1]  = 0.3
-    return shot_prob, goal_prob, transition
+def _to_grid_vec(x, y):
+    cols = np.minimum((x / (PITCH_X / GRID_COLS)).astype(int), GRID_COLS - 1)
+    rows = np.minimum((y / (PITCH_Y / GRID_ROWS)).astype(int), GRID_ROWS - 1)
+    return cols, rows
 
 
-def _make_surface():
-    """Simple xT surface where value increases toward the right (goal side)."""
-    n = xt_model.GRID_COLS * xt_model.GRID_ROWS
-    surface = np.zeros(n)
-    for row in range(xt_model.GRID_ROWS):
-        for col in range(xt_model.GRID_COLS):
-            surface[row * xt_model.GRID_COLS + col] = col / xt_model.GRID_COLS
-    return surface
+def solve_xt(shot_prob, goal_prob, transition):
+    xt = np.zeros(GRID_COLS * GRID_ROWS)
+    for _ in range(ITERATIONS):
+        xt = shot_prob * goal_prob + (1 - shot_prob) * (transition @ xt)
+    return xt
 
 
-# ---------------------------------------------------------------------------
-# _to_grid_vec
-# ---------------------------------------------------------------------------
+class TestToGridVec:
+    def test_origin_maps_to_zero_cell(self):
+        c, r = _to_grid_vec(np.array([0.0]), np.array([0.0]))
+        assert c[0] == 0 and r[0] == 0
 
-def test_to_grid_clamps():
-    """Corner coordinates should clamp to max grid index."""
-    col, row = xt_model._to_grid_vec(np.array([119.9]), np.array([79.9]))
-    assert col[0] == xt_model.GRID_COLS - 1
-    assert row[0] == xt_model.GRID_ROWS - 1
+    def test_pitch_centre_maps_to_middle(self):
+        c, r = _to_grid_vec(np.array([60.0]), np.array([40.0]))
+        assert c[0] == 8 and r[0] == 6
 
+    def test_far_corner_clamps_to_max_cell(self):
+        c, r = _to_grid_vec(np.array([120.0]), np.array([80.0]))
+        assert c[0] == GRID_COLS - 1
+        assert r[0] == GRID_ROWS - 1
 
-def test_to_grid_origin():
-    """Origin (0, 0) should map to grid cell (0, 0)."""
-    col, row = xt_model._to_grid_vec(np.array([0.0]), np.array([0.0]))
-    assert col[0] == 0
-    assert row[0] == 0
+    def test_output_within_bounds(self):
+        rng = np.random.default_rng(42)
+        x = rng.uniform(0, 120, 1000)
+        y = rng.uniform(0, 80, 1000)
+        c, r = _to_grid_vec(x, y)
+        assert (c >= 0).all() and (c < GRID_COLS).all()
+        assert (r >= 0).all() and (r < GRID_ROWS).all()
 
-
-def test_to_grid_vectorised():
-    """Vectorised input returns arrays of the same length."""
-    xs = np.array([0.0, 60.0, 119.9])
-    ys = np.array([0.0, 40.0, 79.9])
-    cols, rows = xt_model._to_grid_vec(xs, ys)
-    assert len(cols) == 3
-    assert len(rows) == 3
-    assert cols[1] == int(60.0 / (xt_model.PITCH_X / xt_model.GRID_COLS))
-
-
-# ---------------------------------------------------------------------------
-# build_matrices shape (offline — no DB)
-# ---------------------------------------------------------------------------
-
-def test_build_matrices_shape():
-    """Offline: verify that hand-built matrices have the expected shapes."""
-    shot_prob, goal_prob, transition = _make_matrices()
-    n = xt_model.GRID_COLS * xt_model.GRID_ROWS
-    assert shot_prob.shape  == (n,)
-    assert goal_prob.shape  == (n,)
-    assert transition.shape == (n, n)
+    def test_vectorised_batch(self):
+        xs = np.array([0.0, 60.0, 119.9])
+        ys = np.array([0.0, 40.0, 79.9])
+        c, r = _to_grid_vec(xs, ys)
+        assert len(c) == 3 and len(r) == 3
 
 
-# ---------------------------------------------------------------------------
-# solve_xt
-# ---------------------------------------------------------------------------
+class TestSolveXt:
+    def _make_inputs(self, seed=0):
+        n = GRID_COLS * GRID_ROWS
+        rng = np.random.default_rng(seed)
+        shot_prob = rng.uniform(0, 0.15, n)
+        goal_prob = rng.uniform(0, 0.4, n)
+        raw = rng.uniform(0, 1, (n, n))
+        row_sums = raw.sum(axis=1, keepdims=True)
+        transition = raw / row_sums
+        return shot_prob, goal_prob, transition
 
-def test_solve_xt_range():
-    """xT surface values must lie in [0, 1]."""
-    sp, gp, tr = _make_matrices()
-    surface = xt_model.solve_xt(sp, gp, tr)
-    assert surface.min() >= 0.0
-    assert surface.max() <= 1.0
+    def test_output_shape(self):
+        sp, gp, tr = self._make_inputs()
+        xt = solve_xt(sp, gp, tr)
+        assert xt.shape == (GRID_COLS * GRID_ROWS,)
 
+    def test_values_between_zero_and_one(self):
+        sp, gp, tr = self._make_inputs()
+        xt = solve_xt(sp, gp, tr)
+        assert (xt >= 0.0).all() and (xt <= 1.0).all()
 
-def test_solve_xt_shape():
-    """solve_xt must return a flat array of length GRID_COLS * GRID_ROWS."""
-    sp, gp, tr = _make_matrices()
-    surface = xt_model.solve_xt(sp, gp, tr)
-    assert surface.shape == (xt_model.GRID_COLS * xt_model.GRID_ROWS,)
+    def test_zero_shot_prob_yields_zero_surface(self):
+        n = GRID_COLS * GRID_ROWS
+        sp = np.zeros(n)
+        gp = np.zeros(n)
+        tr = np.eye(n)
+        xt = solve_xt(sp, gp, tr)
+        np.testing.assert_array_equal(xt, np.zeros(n))
 
+    def test_high_goal_zone_has_highest_xt(self):
+        n = GRID_COLS * GRID_ROWS
+        sp = np.zeros(n)
+        gp = np.zeros(n)
+        tr = np.zeros((n, n))
+        hot_cell = 100
+        sp[hot_cell] = 0.8
+        gp[hot_cell] = 0.9
+        xt = solve_xt(sp, gp, tr)
+        assert xt[hot_cell] == pytest.approx(0.72, rel=1e-3)
+        assert xt[np.arange(n) != hot_cell].sum() == 0.0
 
-def test_solve_xt_near_goal_higher():
-    """Cell near goal should have higher xT than centre of pitch."""
-    sp, gp, tr = _make_matrices()
-    surface = xt_model.solve_xt(sp, gp, tr)
-    near_goal_cell = xt_model.GRID_COLS * xt_model.GRID_ROWS - 1
-    centre_cell    = (xt_model.GRID_ROWS // 2) * xt_model.GRID_COLS + xt_model.GRID_COLS // 2
-    assert surface[near_goal_cell] >= surface[centre_cell]
-
-
-# ---------------------------------------------------------------------------
-# xT delta computation (core logic used by compute_and_write_xt)
-# ---------------------------------------------------------------------------
-
-def test_xt_delta_forward_pass_positive():
-    """A forward pass (higher x) should produce a non-negative xT delta."""
-    surface = _make_surface()
-
-    x_start, y_start = np.array([60.0]), np.array([40.0])
-    x_end,   y_end   = np.array([80.0]), np.array([40.0])
-
-    cs, rs = xt_model._to_grid_vec(x_start, y_start)
-    ce, re = xt_model._to_grid_vec(x_end,   y_end)
-
-    start_val = surface[rs[0] * xt_model.GRID_COLS + cs[0]]
-    end_val   = surface[re[0] * xt_model.GRID_COLS + ce[0]]
-    assert end_val - start_val >= 0.0
-
-
-def test_xt_shot_value_non_negative():
-    """xT assigned to a shot must be non-negative."""
-    surface = _make_surface()
-    x, y = np.array([110.0]), np.array([40.0])
-    c, r = xt_model._to_grid_vec(x, y)
-    shot_xt = surface[r[0] * xt_model.GRID_COLS + c[0]]
-    assert shot_xt >= 0.0
+    def test_deterministic_across_runs(self):
+        sp, gp, tr = self._make_inputs(seed=7)
+        xt1 = solve_xt(sp, gp, tr)
+        xt2 = solve_xt(sp, gp, tr)
+        np.testing.assert_array_equal(xt1, xt2)

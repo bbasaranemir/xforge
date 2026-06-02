@@ -56,8 +56,8 @@ services:
     image: dpage/pgadmin4:8.3
     platform: linux/amd64
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
     ports:
       - "5050:80"
     mem_limit: 256m
@@ -114,6 +114,12 @@ services:
     volumes:
       - superset_data:/app/superset_home
       - ./config/superset_config.py:/app/pythonpath/superset_config.py
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       - postgres
     networks:
