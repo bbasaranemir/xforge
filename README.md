@@ -34,7 +34,7 @@ flowchart TD
 
     subgraph DBT["📦 dbt 1.7"]
         STG["3 staging models\nstg_events · stg_passes · stg_shots"]
-        MART["4 mart models\nplayer_metrics · team_summary\nmatch_summary · competition_leaderboard"]
+        MART["4 mart models\nplayer_metrics (+ total_xt_shots)\nteam_summary · match_summary\ncompetition_leaderboard (xt_per_match rank)"]
     end
 
     subgraph ML["🤖 ML Pipeline"]
@@ -98,8 +98,8 @@ The `matchday_push` DAG generates a complete 5-page PDF and a SportsCode/Hudl-co
 |-------|-----------|--------|--------|
 | **xT Surface** | Value iteration (15×) | Threat per pitch cell | 192 cells, max=0.298 |
 | **xP Classifier** | XGBoost | Pass completion probability | AUC **0.8948**, log-loss 0.3236 |
-| **Corner Delivery Clustering** | K-Means | Set-piece delivery zones | 6 clusters (origin coordinates) |
-| **Shot Location Clustering** | K-Means | Shot zone patterns | 6 clusters (attack third) |
+| **Corner Delivery Clustering** | K-Means | Set-piece delivery zones | 6 clusters on corner origin coords |
+| **Shot Location Clustering** | K-Means | Shot zone patterns | 6 clusters — correct StatsBomb zones (6-yard box: x>114, penalty area: x>102) |
 | **Press Trigger** | Rule-based sequence | High-press moment detection | Ball recovery + 3 defensive actions / 5 s |
 
 **xP features:** `start_x/y`, `end_x/y`, `distance`, `angle_to_goal`, `under_pressure`, `minute_bin`
@@ -348,10 +348,10 @@ dim_teams ────────┘         │
                             ├──► press_events         (trigger sequences)
                             │
                             └──► analytics_marts.*
-                                  ├── mart_player_metrics
-                                  ├── mart_team_summary
+                                  ├── mart_player_metrics        (total_xt_shots included)
+                                  ├── mart_team_summary          (avg_xp — NULL-aware)
                                   ├── mart_match_summary
-                                  └── mart_competition_leaderboard
+                                  └── mart_competition_leaderboard  (xt_per_match · xt_per_match_rank)
 ```
 
 ---
