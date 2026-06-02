@@ -40,7 +40,7 @@ flowchart TD
     subgraph ML["🤖 ML Pipeline"]
         XT["xT Model\nValue iteration · 16×12 grid\n5,375,085 rows written"]
         XP["XGBoost xP\nAUC = 0.8948 · log-loss = 0.3236\n3,387,760 predictions"]
-        KM["K-Means Clustering\n24 set-piece delivery zones\npress trigger detection"]
+        KM["K-Means Clustering\n6 corner delivery zones · 6 shot zones\npress trigger detection"]
     end
 
     subgraph SERVE["📊 Serving Layer"]
@@ -98,10 +98,13 @@ The `matchday_push` DAG generates a complete 5-page PDF and a SportsCode/Hudl-co
 |-------|-----------|--------|--------|
 | **xT Surface** | Value iteration (15×) | Threat per pitch cell | 192 cells, max=0.298 |
 | **xP Classifier** | XGBoost | Pass completion probability | AUC **0.8948**, log-loss 0.3236 |
-| **Set-Piece Clustering** | K-Means | Delivery zone patterns | 24 clusters (4 types × 6) |
+| **Corner Delivery Clustering** | K-Means | Set-piece delivery zones | 6 clusters (origin coordinates) |
+| **Shot Location Clustering** | K-Means | Shot zone patterns | 6 clusters (attack third) |
 | **Press Trigger** | Rule-based sequence | High-press moment detection | Ball recovery + 3 defensive actions / 5 s |
 
 **xP features:** `start_x/y`, `end_x/y`, `distance`, `angle_to_goal`, `under_pressure`, `minute_bin`
+
+> **Note on shot quality:** The xT surface is used as the shot-quality proxy — `xp_value` is a pass-completion model and is NULL for shot events by design.
 
 ---
 
@@ -197,15 +200,17 @@ SELECT
 ### CI / CD — GitHub Actions
 
 ```
-$ gh run list --limit 3
+$ gh run list --limit 5
 
-STATUS  TITLE                                               WORKFLOW  BRANCH  ELAPSED
-✓       test: add DAG integrity tests (load, task IDs…)    CI / CD   main    1m29s
-✓       docs: fix staging model count — 3 models not 4     CI / CD   main    1m35s
-✓       docs: clarify Airflow is Docker-provided in reqs   CI / CD   main    1m48s
+STATUS  TITLE                                                  WORKFLOW  BRANCH  ELAPSED
+✓       fix: dual-perspective audit — football accuracy + …   CI / CD   main    1m31s
+✓       feat: audit fixes — coverage threshold, new tests …   CI / CD   main    1m44s
+✓       fix: correct ml_dag task IDs in DAG tests + LICENSE   CI / CD   main    1m38s
+✓       docs: add Live Pipeline Output section to README       CI / CD   main    1m29s
+✓       test: add DAG integrity tests (load, task IDs, …)     CI / CD   main    1m35s
 ```
 
-All three jobs pass on every push — **lint** (black · isort · flake8), **unit tests** (16 tests, DAG tests skip gracefully without Airflow), and **dbt compile check**.
+All five jobs pass — **lint** (black · isort · flake8), **unit tests** (45 tests across 5 files; DAG tests skip gracefully without Airflow), and **dbt compile check**.
 
 ---
 
@@ -226,7 +231,7 @@ xforge/
 │   └── matchday_dag.py            # On-demand — ingest → PDF → XML → email
 ├── dbt_project/
 │   └── models/
-│       ├── staging/               # stg_events, stg_passes, stg_shots (4 models)
+│       ├── staging/               # stg_events, stg_passes, stg_shots (3 models)
 │       └── marts/                 # player_metrics, team_summary,
 │                                  # match_summary, competition_leaderboard
 ├── scripts/
@@ -237,6 +242,7 @@ xforge/
 │   ├── tactical_models.py         # K-Means set-piece clustering + press detection
 │   ├── report_generator.py        # 5-page PDF via mplsoccer + matplotlib
 │   ├── xml_generator.py           # SportsCode/Hudl XML — top-25 xT events
+│   ├── setup_superset.py          # Autonomous Superset bootstrap — 7 charts + dashboard
 │   └── superset_init.py           # Bootstraps saved queries on first run
 ├── tests/                         # pytest suite — unit + schema validation
 ├── docker-compose.yml             # 8 services: Airflow (3), Postgres, Superset,
@@ -296,10 +302,10 @@ make report MATCH_ID=3942349
 
 | Service | URL | Default credentials |
 |---------|-----|---------------------|
-| Airflow | http://localhost:8080 | admin / (see `.env`) |
-| Superset | http://localhost:8088 | admin / admin123 |
+| Airflow | http://localhost:8080 | see `.env` → `AIRFLOW_USER` / `AIRFLOW_PASSWORD` |
+| Superset | http://localhost:8088 | see `.env` → `SUPERSET_USER` / `SUPERSET_PASSWORD` |
 | Grafana | http://localhost:3000 | admin / admin |
-| pgAdmin | http://localhost:5050 | admin@admin.com / admin |
+| pgAdmin | http://localhost:5050 | see `.env` → `PGADMIN_EMAIL` / `PGADMIN_PASSWORD` |
 
 ### GitHub Codespaces
 
