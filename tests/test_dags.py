@@ -71,8 +71,8 @@ def test_ml_dag_loads():
 def test_ml_dag_has_required_tasks():
     dag = _load_dag("ml_dag")
     task_ids = set(dag.task_ids)
-    assert "tactical" in task_ids
-    assert "predictive" in task_ids
+    assert "tactical_models" in task_ids
+    assert "predictive_models" in task_ids
 
 
 def test_ml_dag_no_cycles():
