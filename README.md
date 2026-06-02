@@ -129,6 +129,86 @@ The `matchday_push` DAG generates a complete 5-page PDF and a SportsCode/Hudl-co
 
 ---
 
+## Live Pipeline Output
+
+### XGBoost xP Model — Training & Prediction
+
+```
+INFO  Loading pass data for training (sample 300,000 rows)…
+INFO  Training XGBoost classifier…
+INFO  === xP Model Metrics ===
+INFO  AUC:       0.8948
+INFO  Log-loss:  0.3236
+INFO  Accuracy:  0.8221
+INFO  Model saved → /opt/airflow/models/xp_model.joblib
+
+INFO  Starting chunked prediction (server-side cursor, chunk=50,000)…
+INFO  Chunk 1/68  written  50,000 rows   [total:    50,000 / 3,387,760]
+INFO  Chunk 2/68  written  50,000 rows   [total:   100,000 / 3,387,760]
+…
+INFO  Chunk 68/68 written  37,760 rows   [total: 3,387,760 / 3,387,760]
+INFO  xP write complete — 3,387,760 predictions committed to fact_events.xp_value
+```
+
+### dbt Marts — Full Refresh
+
+```
+$ dbt run --select marts
+Running with dbt=1.7.4
+
+Concurrency: 1 threads (target='prod')
+
+1 of 4 START sql table model analytics_marts.mart_player_metrics ........... [RUN]
+1 of 4 OK created sql table model analytics_marts.mart_player_metrics ...... [SELECT 11778 in 4.83s]
+
+2 of 4 START sql table model analytics_marts.mart_team_summary ............. [RUN]
+2 of 4 OK created sql table model analytics_marts.mart_team_summary ........ [SELECT 337 in 3.21s]
+
+3 of 4 START sql table model analytics_marts.mart_match_summary ............ [RUN]
+3 of 4 OK created sql table model analytics_marts.mart_match_summary ....... [SELECT 3464 in 5.67s]
+
+4 of 4 START sql table model analytics_marts.mart_competition_leaderboard .. [RUN]
+4 of 4 OK created sql table model analytics_marts.mart_competition_leaderboard [SELECT 11367 in 2.94s]
+
+Finished running 4 table models in 0 hours 0 minutes and 16.65 seconds (0:00:16).
+
+Completed successfully
+
+Done. PASS=4 WARN=0 ERROR=0 SKIP=0 TOTAL=4
+```
+
+### Final Verification Query
+
+```sql
+SELECT
+  (SELECT COUNT(*) FROM fact_events WHERE xt_value IS NOT NULL) AS xt_rows,
+  (SELECT COUNT(*) FROM fact_events WHERE xp_value IS NOT NULL) AS xp_rows,
+  (SELECT COUNT(*) FROM set_piece_clusters)                     AS clusters,
+  (SELECT COUNT(*) FROM model_registry)                         AS models,
+  (SELECT COUNT(*) FROM xt_surface)                             AS xt_surface_cells;
+```
+
+```
+ xt_rows  | xp_rows   | clusters | models | xt_surface_cells
+----------+-----------+----------+--------+------------------
+ 5375085  | 3387760   |       24 |      4 |              192
+```
+
+### CI / CD — GitHub Actions
+
+```
+$ gh run list --limit 3
+
+STATUS  TITLE                                               WORKFLOW  BRANCH  ELAPSED
+✓       test: add DAG integrity tests (load, task IDs…)    CI / CD   main    1m29s
+✓       docs: fix staging model count — 3 models not 4     CI / CD   main    1m35s
+✓       docs: clarify Airflow is Docker-provided in reqs   CI / CD   main    1m48s
+```
+
+All three jobs pass on every push — **lint** (black · isort · flake8), **unit tests** (16 tests, DAG tests skip gracefully without Airflow), and **dbt compile check**.
+
+---
+
 ## Project Structure
 
 ```
