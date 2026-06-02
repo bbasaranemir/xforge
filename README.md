@@ -64,6 +64,26 @@ flowchart TD
 
 ---
 
+## Business Use Cases
+
+xForge is not just a data pipeline; it is an operational engine designed to solve real-world football analytics bottlenecks:
+
+- **Data-Driven Scouting:** Traditional completion rates are misleading. By filtering players who successfully complete high-difficulty (low xP) but high-reward (high xT) passes, scouting departments can identify undervalued, high-vision playmakers before their market value peaks.
+- **Tactical Opponent Analysis:** Autonomous generation of *Press Intensity* and *xT Surface Heatmaps* allows coaching staffs to instantly identify opposition defensive vulnerabilities (e.g., high-threat leaks in specific half-spaces) without manual data slicing.
+- **Autonomous Video Analysis Integration:** The pipeline automatically generates HUDL Sportscode-compatible XML files mapped to the top 25 highest-xT events of a match. This eliminates hours of manual video tagging for performance analysts, allowing them to focus strictly on tactical review.
+
+---
+
+## Future Roadmap
+
+While the current architecture handles event data at scale, the next iterations of this project will focus on:
+
+- **Tracking Data Integration:** Transitioning from an RDBMS to a Data Lake architecture to ingest and process 25 FPS X,Y coordinate tracking data.
+- **Real-time Streaming:** Replacing batch Airflow ingestion with Apache Kafka to process match events in milliseconds, powering live in-match dashboards.
+- **MLOps Implementation:** Integrating MLflow for continuous model registry, monitoring XGBoost performance over time, and automated retraining triggers to prevent model drift.
+
+---
+
 ## Key Engineering Features
 
 ### Memory-Safe ML at Scale
