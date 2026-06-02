@@ -6,10 +6,10 @@
 [![dbt 1.7](https://img.shields.io/badge/dbt-1.7-FF694B?logo=dbt&logoColor=white)](https://www.getdbt.com/)
 [![PostgreSQL 15](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker%20Compose-8%20services-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![XGBoost](https://img.shields.io/badge/XGBoost-AUC%200.8948-FF6600)](https://xgboost.readthedocs.io/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-xP%200.8948%20%7C%20xG%200.7822-FF6600)](https://xgboost.readthedocs.io/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e.svg)](LICENSE)
 
-> Production-grade football analytics platform — **9.2M+ events, 3,464 matches, XGBoost xP at AUC 0.8948**. Engineered for real-world constraints: OOM-safe server-side cursor writes, idempotent fault-tolerant restarts, and fully autonomous PDF/XML match reporting. Orchestrated end-to-end by Apache Airflow.
+> Production-grade football analytics platform — **9.2M+ events, 3,464 matches, XGBoost xP (AUC 0.8948) + xG (AUC 0.7822, 88k calibrated predictions)**. Engineered for real-world constraints: OOM-safe server-side cursor writes, idempotent fault-tolerant restarts, and fully autonomous PDF/XML match reporting. Orchestrated end-to-end by Apache Airflow.
 
 ---
 
@@ -34,24 +34,25 @@ flowchart TD
     subgraph AIRFLOW["⚙️ Apache Airflow — 3 DAGs"]
         direction TB
         DAG1["ingestion_pipeline\n● daily 02:00 UTC\n● incremental, ~2.5 s/match"]
-        DAG2["ml_training\n● weekly Sun 03:00\n● xP + K-Means in parallel"]
+        DAG2["ml_training\n● weekly Sun 03:00\n● xP + xG + K-Means in parallel"]
         DAG3["matchday_push\n● manual trigger\n● PDF + XML generation"]
     end
 
     subgraph PG["🗄️ PostgreSQL 15"]
-        FACT["fact_events\n9.2M rows · 40+ LIST partitions\nxt_value · xp_value columns"]
+        FACT["fact_events\n9.2M rows · 40+ LIST partitions\nxt_value · xp_value · xg_value columns"]
         DIM["dim_matches · dim_players\ndim_teams · dim_competitions"]
         AUX["xt_surface (192 cells)\nmodel_registry\nset_piece_clusters"]
     end
 
     subgraph DBT["📦 dbt 1.7"]
         STG["3 staging models\nstg_events · stg_passes · stg_shots"]
-        MART["4 mart models\nplayer_metrics (+ total_xt_shots)\nteam_summary · match_summary\ncompetition_leaderboard (xt_per_match rank)"]
+        MART["4 mart models\nplayer_metrics (total_xg · avg_xg · finishing_quality)\nteam_summary · match_summary\ncompetition_leaderboard (xt_per_match rank)"]
     end
 
     subgraph ML["🤖 ML Pipeline"]
         XT["xT Model\nValue iteration · 16×12 grid\n5,375,085 rows written"]
         XP["XGBoost xP\nAUC = 0.8948 · log-loss = 0.3236\n3,387,760 predictions"]
+        XG["XGBoost xG\nAUC = 0.7822 · calibrated avg=0.111\n88,023 shot predictions"]
         KM["K-Means Clustering\n6 corner delivery zones · 6 shot zones\npress trigger detection"]
     end
 
@@ -66,8 +67,8 @@ flowchart TD
     DAG1 --> FACT & DIM
     FACT --> DAG1
     FACT --> DAG2
-    DAG2 --> XT & XP & KM
-    XT & XP & KM --> AUX
+    DAG2 --> XT & XP & XG & KM
+    XT & XP & XG & KM --> AUX
     FACT & DIM --> STG --> MART
     MART --> SS
     FACT --> DAG3 --> PDF & XML
@@ -83,6 +84,7 @@ xForge is not just a data pipeline; it is an operational engine designed to solv
 - **Data-Driven Scouting:** Traditional completion rates are misleading. By filtering players who successfully complete high-difficulty (low xP) but high-reward (high xT) passes, scouting departments can identify undervalued, high-vision playmakers before their market value peaks.
 - **Tactical Opponent Analysis:** Autonomous generation of *Press Intensity* and *xT Surface Heatmaps* allows coaching staffs to instantly identify opposition defensive vulnerabilities (e.g., high-threat leaks in specific half-spaces) without manual data slicing.
 - **Autonomous Video Analysis Integration:** The pipeline automatically generates HUDL Sportscode-compatible XML files mapped to the top 25 highest-xT events of a match. This eliminates hours of manual video tagging for performance analysts, allowing them to focus strictly on tactical review.
+- **Striker Evaluation via Finishing Quality:** The `finishing_quality` metric (goals − total_xG) separates clinical finishers from shot-volume players. A striker with finishing_quality +189 (Messi, Barcelona) is systematically outperforming expected goals — exactly what recruitment departments need when evaluating transfer value beyond raw goal counts.
 
 ---
 
@@ -129,17 +131,17 @@ The `matchday_push` DAG generates a complete 5-page PDF and a SportsCode/Hudl-co
 | Model | Algorithm | Target | Result |
 |-------|-----------|--------|--------|
 | **xT Surface** | Value iteration (15×) | Threat per pitch cell | 192 cells, max=0.298 |
-| **xG Classifier** | XGBoost | Goal probability per shot | AUC **~0.79**, scale_pos_weight dynamic |
+| **xG Classifier** | XGBoost | Goal probability per shot | AUC **0.7822**, 88,023 predictions, post-hoc calibrated |
 | **xP Classifier** | XGBoost | Pass completion probability | AUC **0.8948**, log-loss 0.3236 |
 | **Corner Delivery Clustering** | K-Means | Set-piece delivery zones | 6 clusters on corner origin coords |
 | **Shot Location Clustering** | K-Means | Shot zone patterns | 6 clusters — correct StatsBomb zones (6-yard box: x>114, penalty area: x>102) |
 | **Press Trigger** | Rule-based sequence | High-press moment detection | Ball recovery + 3 defensive actions / 5 s |
 
-**xG features:** `distance_to_goal`, `angle_to_goal`, `under_pressure`, `minute_bin` — location-based coordinate model consistent with academic xG literature. Class imbalance (~10% goals) handled with dynamic `scale_pos_weight`.
+**xG features:** `distance_to_goal`, `angle_to_goal`, `under_pressure`, `minute_bin` — location-based coordinate model consistent with academic xG literature. Class imbalance (~10% goals) handled with dynamic `scale_pos_weight`. Raw XGBoost probabilities were post-hoc calibrated via multiplicative rescaling (`xg_value × actual_goals / sum_predicted_xg`) so that `sum(xG) = 9,790 = actual goals`, yielding `avg_xg = 0.111` (11.1% goal rate) ✅
 
 **xP features:** `start_x/y`, `end_x/y`, `distance`, `angle_to_goal`, `under_pressure`, `minute_bin`
 
-> **finishing_quality** = goals − total_xg per player. Positive = clinical finisher outperforming expectation; negative = poor conversion. Available in `mart_player_metrics`.
+> **finishing_quality** = goals − total_xG per player. Positive = clinical finisher outperforming expectation; negative = poor conversion. Available in `mart_player_metrics`. Example: Messi (Barcelona) = **+189.6**.
 
 ---
 
@@ -148,7 +150,7 @@ The `matchday_push` DAG generates a complete 5-page PDF and a SportsCode/Hudl-co
 | DAG | Schedule | Tasks |
 |-----|----------|-------|
 | `ingestion_pipeline` | Daily 02:00 UTC | `ingest → dbt_run → dbt_test → xt_model → superset_init` |
-| `ml_training` | Weekly Sun 03:00 | `tactical_models ‖ predictive_models ‖ xg_model → dbt_refresh_marts` |
+| `ml_training` | Weekly Sun 03:00 | `tactical_models ‖ predictive_models ‖ xg_model → dbt_refresh_marts` (all 3 ML tasks in parallel) |
 | `matchday_push` | Manual trigger | `ingest_match → generate_pdf → generate_xml → send_email` |
 
 ---
@@ -162,6 +164,7 @@ The `matchday_push` DAG generates a complete 5-page PDF and a SportsCode/Hudl-co
 | DB partitions | 40+ (by competition) |
 | xT records written | 5,375,085 |
 | xP predictions written | 3,387,760 |
+| xG predictions written | 88,023 (calibrated, avg_xg = 0.111) |
 | Ingestion throughput | ~2.5 s / match |
 | Write chunk size | 50,000 rows |
 
@@ -186,6 +189,30 @@ INFO  Chunk 2/68  written  50,000 rows   [total:   100,000 / 3,387,760]
 …
 INFO  Chunk 68/68 written  37,760 rows   [total: 3,387,760 / 3,387,760]
 INFO  xP write complete — 3,387,760 predictions committed to fact_events.xp_value
+```
+
+### XGBoost xG Model — Training & Prediction
+
+```
+INFO  Training sample loaded: 80000 shots
+INFO  Class balance: 8885 goals / 71115 non-goals → scale_pos_weight=8.01
+INFO  === xG Model Metrics ===
+INFO  AUC:      0.7822
+INFO  Log-loss: 0.3541
+INFO  Accuracy: 0.8893
+INFO  xG model saved → /opt/airflow/reports/xg_model.joblib
+
+INFO  Training data freed. Starting prediction phase...
+INFO  xG written: 50000 rows committed
+INFO  xG written: 88023 rows committed
+INFO  xG write complete — 88023 shots updated
+
+-- Post-hoc calibration (DB-level rescaling):
+UPDATE fact_events
+SET xg_value = ROUND((xg_value * 9790.0 / 35658.0)::numeric, 6)
+WHERE event_type = 'Shot' AND xg_value IS NOT NULL;
+-- UPDATE 88023
+-- After: avg_xg = 0.1112  ✓  total_xg = 9790 = actual goals ✓
 ```
 
 ### dbt Marts — Full Refresh
@@ -219,17 +246,20 @@ Done. PASS=4 WARN=0 ERROR=0 SKIP=0 TOTAL=4
 
 ```sql
 SELECT
-  (SELECT COUNT(*) FROM fact_events WHERE xt_value IS NOT NULL) AS xt_rows,
-  (SELECT COUNT(*) FROM fact_events WHERE xp_value IS NOT NULL) AS xp_rows,
-  (SELECT COUNT(*) FROM set_piece_clusters)                     AS clusters,
-  (SELECT COUNT(*) FROM model_registry)                         AS models,
-  (SELECT COUNT(*) FROM xt_surface)                             AS xt_surface_cells;
+  (SELECT COUNT(*) FROM fact_events WHERE xt_value IS NOT NULL)  AS xt_rows,
+  (SELECT COUNT(*) FROM fact_events WHERE xp_value IS NOT NULL)  AS xp_rows,
+  (SELECT COUNT(*) FROM fact_events WHERE xg_value IS NOT NULL)  AS xg_rows,
+  (SELECT ROUND(AVG(xg_value)::numeric, 4)
+     FROM fact_events WHERE event_type = 'Shot')                 AS avg_xg,
+  (SELECT COUNT(*) FROM set_piece_clusters)                      AS clusters,
+  (SELECT COUNT(*) FROM model_registry)                          AS models,
+  (SELECT COUNT(*) FROM xt_surface)                              AS xt_surface_cells;
 ```
 
 ```
- xt_rows  | xp_rows   | clusters | models | xt_surface_cells
-----------+-----------+----------+--------+------------------
- 5375085  | 3387760   |       24 |      4 |              192
+ xt_rows  | xp_rows   | xg_rows | avg_xg | clusters | models | xt_surface_cells
+----------+-----------+---------+--------+----------+--------+------------------
+ 5375085  | 3387760   |   88023 | 0.1112 |       24 |      4 |              192
 ```
 
 ### CI / CD — GitHub Actions
@@ -245,7 +275,7 @@ STATUS  TITLE                                                  WORKFLOW  BRANCH 
 ✓       test: add DAG integrity tests (load, task IDs, …)     CI / CD   main    1m35s
 ```
 
-All five jobs pass — **lint** (black · isort · flake8), **unit tests** (53 tests across 6 files; DAG tests skip gracefully without Airflow), and **dbt compile check**.
+All five jobs pass — **lint** (black · isort · flake8), **unit tests** (46+ tests across 7 files including xG model tests; DAG tests skip gracefully without Airflow), and **dbt compile check**.
 
 ---
 
@@ -274,6 +304,7 @@ xforge/
 │   ├── massive_ingestion.py       # Incremental StatsBomb loader (upsert, 50k chunks)
 │   ├── xt_model.py                # Value-iteration xT surface builder
 │   ├── predictive_models.py       # XGBoost xP — sample train + chunked prediction
+│   ├── xg_model.py                # XGBoost xG — shot goal probability + calibration
 │   ├── tactical_models.py         # K-Means set-piece clustering + press detection
 │   ├── report_generator.py        # 5-page PDF via mplsoccer + matplotlib
 │   ├── xml_generator.py           # SportsCode/Hudl XML — top-25 xT events
@@ -383,7 +414,7 @@ dim_teams ────────┘         │
                             ├──► press_events         (trigger sequences)
                             │
                             └──► analytics_marts.*
-                                  ├── mart_player_metrics        (total_xt_shots included)
+                                  ├── mart_player_metrics        (total_xg · avg_xg · finishing_quality)
                                   ├── mart_team_summary          (avg_xp — NULL-aware)
                                   ├── mart_match_summary
                                   └── mart_competition_leaderboard  (xt_per_match · xt_per_match_rank)
