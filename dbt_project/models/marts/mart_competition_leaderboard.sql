@@ -7,7 +7,9 @@ with player_comp as (
         round(sum(coalesce(fe.xt_value, 0))::numeric, 4)    as total_xt,
         count(*) filter (where fe.event_type = 'Pass')       as total_passes,
         count(*) filter (where fe.event_type = 'Shot')       as total_shots,
-        round(avg(coalesce(fe.xp_value, 0))::numeric, 4)     as avg_xp
+        -- avg() naturally ignores NULLs; coalesce(xp_value,0) would skew avg down
+        round(avg(fe.xp_value)::numeric, 4)                  as avg_xp,
+        count(distinct fe.match_id)                          as matches_played
     from {{ ref('stg_events') }} fe
     where fe.player_id is not null
     group by fe.player_id, fe.competition_id
@@ -22,7 +24,19 @@ select
     pc.total_passes,
     pc.total_shots,
     pc.avg_xp,
-    rank() over (partition by pc.competition_id order by pc.total_xt desc) as xt_rank
+    pc.matches_played,
+    -- per-match normalisation prevents high-volume players dominating leaderboard
+    round(
+        case when pc.matches_played > 0
+             then pc.total_xt / pc.matches_played
+        end::numeric, 4
+    )                                                                        as xt_per_match,
+    rank() over (partition by pc.competition_id order by pc.total_xt desc)  as xt_rank,
+    -- secondary ranking by per-match rate (fairer across different match counts)
+    rank() over (
+        partition by pc.competition_id
+        order by (pc.total_xt / nullif(pc.matches_played, 0)) desc
+    )                                                                        as xt_per_match_rank
 from player_comp pc
 left join {{ source('public', 'dim_players') }}         dp on pc.player_id     = dp.player_id
 left join {{ source('public', 'dim_competitions') }}    dc on pc.competition_id = dc.competition_id

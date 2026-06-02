@@ -8,7 +8,8 @@ with base as (
         count(*) filter (where event_type = 'Pressure')      as total_pressures,
         count(*) filter (where event_type = 'Carry')         as total_carries,
         round(sum(coalesce(xt_value, 0))::numeric, 4)        as total_xt,
-        round(avg(coalesce(xp_value, 0))::numeric, 4)        as avg_xp
+        -- avg() ignores NULLs; coalesce(xp_value, 0) would skew the average down
+        round(avg(xp_value)::numeric, 4)                      as avg_xp
     from {{ ref('stg_events') }}
     where team_id is not null
     group by team_id

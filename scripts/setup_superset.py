@@ -176,27 +176,31 @@ ORDER BY event_type, cluster_label
         },
     },
     # 5 ── Shot Quality by Zone (table)
+    # StatsBomb pitch: 120×80 units. Goal line at x=120, goal posts at y=36 & y=44.
+    # 6-yard box:   x > 114, y BETWEEN 30 AND 50  (6 yards = ~6 pitch units from goal)
+    # Penalty area: x > 102, y BETWEEN 18 AND 62  (18 yards = ~18 pitch units from goal)
+    # xP (pass completion) is NULL for shots — use xt_value as shot-quality proxy.
     {
         "name": "Shot Quality by Zone",
         "sql": """
 SELECT
   CASE
-    WHEN location_x > 102 AND location_y BETWEEN 18 AND 62 THEN '6-yard box'
-    WHEN location_x > 88  AND location_y BETWEEN 13 AND 67 THEN 'Penalty area'
+    WHEN location_x > 114 AND location_y BETWEEN 30 AND 50 THEN '6-yard box'
+    WHEN location_x > 102 AND location_y BETWEEN 18 AND 62 THEN 'Penalty area'
     WHEN location_x > 60  THEN 'Attacking third'
-    ELSE 'Own half'
+    ELSE 'Own half / long range'
   END AS zone,
   COUNT(*) AS shots,
-  ROUND(AVG(xp_value)::numeric, 4) AS avg_xp
+  ROUND(AVG(xt_value)::numeric, 4) AS avg_xt
 FROM fact_events
-WHERE event_type = 'Shot' AND xp_value IS NOT NULL
+WHERE event_type = 'Shot' AND xt_value IS NOT NULL
 GROUP BY zone
-ORDER BY avg_xp DESC
+ORDER BY avg_xt DESC
 """.strip(),
         "viz_type": "table",
         "params": {
             "viz_type": "table",
-            "all_columns": ["zone", "shots", "avg_xp"],
+            "all_columns": ["zone", "shots", "avg_xt"],
             "metrics": [],
             "percent_metrics": [],
             "timeseries_limit_metric": None,

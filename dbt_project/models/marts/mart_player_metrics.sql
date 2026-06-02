@@ -51,6 +51,7 @@ select
     p.avg_xp,
     coalesce(s.total_shots, 0)                            as total_shots,
     coalesce(s.goals, 0)                                  as goals,
+    coalesce(s.total_xt_shots, 0)                         as total_xt_shots,
     ae.total_xt,
     p.avg_xt_per_pass
 from passes p

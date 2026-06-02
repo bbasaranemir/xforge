@@ -28,7 +28,11 @@ DB_URL = (
     f"/{os.environ['POSTGRES_DB']}"
 )
 
-SET_PIECE_TYPES = ("Corner", "Shot")
+# Only Corner is a genuine set-piece delivery type detectable from StatsBomb open data.
+# Free kicks cannot be distinguished without the pass_type sub-field (not persisted).
+# Shot locations are clustered separately under SHOT_CLUSTER_TYPES for shot-map analysis.
+SET_PIECE_TYPES = ("Corner",)
+SHOT_CLUSTER_TYPES = ("Shot",)
 PRESS_TYPES = ("Pressure", "Interception", "Tackle", "Block")
 N_CLUSTERS = 6
 PRESS_WINDOW_SEC = 5
@@ -44,12 +48,12 @@ def get_engine():
 def fetch_set_pieces(engine) -> pd.DataFrame:
     """
     StatsBomb stores corner kicks as event_type='Pass' originating from the
-    corner-flag positions (pitch is 120×80; arcs sit at x<3 or x>117 AND y<3 or y>77).
-    Free kicks cannot be distinguished without the pass_type sub-field that we don't
-    persist, so we cluster Shot locations as the second set-piece analysis axis.
+    corner-flag positions (pitch is 120×80; corners at x<3 or x>117, y<3 or y>77).
+    Free kicks cannot be distinguished without the pass_type sub-field (not persisted).
+
+    Shots are fetched separately for shot-map clustering (not classified as set pieces).
     """
-    q = text(
-        """
+    q = text("""
         SELECT event_id, 'Corner' AS event_type,
                location_x, location_y,
                end_location_x, end_location_y, match_id, team_id
@@ -64,21 +68,27 @@ def fetch_set_pieces(engine) -> pd.DataFrame:
 
         UNION ALL
 
+        -- Shot locations clustered separately for shot-map analysis (not a set piece)
         SELECT event_id, 'Shot' AS event_type,
                location_x, location_y,
                end_location_x, end_location_y, match_id, team_id
         FROM fact_events
         WHERE event_type = 'Shot'
           AND location_x IS NOT NULL AND location_y IS NOT NULL
-    """
-    )
+    """)
     with engine.connect() as conn:
         return pd.read_sql(q, conn)
 
 
 def cluster_set_pieces(df: pd.DataFrame) -> dict:
+    """
+    Cluster Corner deliveries (set-piece analysis) and Shot locations (shot-map analysis)
+    separately. SET_PIECE_TYPES clusters appear in set_piece_clusters labelled as
+    genuine set pieces; SHOT_CLUSTER_TYPES clusters are labelled 'Shot' to distinguish.
+    """
     results = {}
-    for et in SET_PIECE_TYPES:
+    all_types = SET_PIECE_TYPES + SHOT_CLUSTER_TYPES
+    for et in all_types:
         subset = df[df["event_type"] == et].copy()
         if len(subset) < N_CLUSTERS:
             log.warning("Not enough %s events for clustering (%d)", et, len(subset))
@@ -96,7 +106,10 @@ def cluster_set_pieces(df: pd.DataFrame) -> dict:
         subset["cluster_label"] = labels
         results[et] = (subset, centers)
 
-        log.info("%s: %d events → %d clusters", et, len(subset), N_CLUSTERS)
+        category = "set-piece" if et in SET_PIECE_TYPES else "shot-map"
+        log.info(
+            "%s (%s): %d events → %d clusters", et, category, len(subset), N_CLUSTERS
+        )
 
     return results
 
@@ -125,14 +138,12 @@ def save_clusters(engine, cluster_results: dict) -> None:
 
         if rows:
             conn.execute(
-                text(
-                    """
+                text("""
                     INSERT INTO set_piece_clusters
                         (event_type, cluster_label, center_x, center_y, member_count)
                     VALUES
                         (:event_type, :cluster_label, :center_x, :center_y, :member_count)
-                """
-                ),
+                """),
                 rows,
             )
     log.info("Saved %d cluster centroids", len(rows))
@@ -143,15 +154,13 @@ def save_clusters(engine, cluster_results: dict) -> None:
 
 def fetch_press_candidates(engine) -> pd.DataFrame:
     """Fetch all defensive + recovery actions ordered by match and time."""
-    q = text(
-        """
+    q = text("""
         SELECT event_id, match_id, team_id, event_type,
                minute, second
         FROM fact_events
         WHERE event_type IN ('Pressure', 'Interception', 'Tackle', 'Block', 'Ball Recovery')
         ORDER BY match_id, minute, second
-    """
-    )
+    """)
     with engine.connect() as conn:
         return pd.read_sql(q, conn)
 
@@ -187,12 +196,10 @@ def save_press_metadata(engine, triggers: pd.DataFrame) -> None:
     metrics = {"press_trigger_count": len(triggers)}
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO model_registry (model_name, version, metrics)
                 VALUES ('press_trigger_detector', '1.0', :m)
-            """
-            ),
+            """),
             {"m": json.dumps(metrics)},
         )
     log.info("Press triggers detected: %d", len(triggers))
