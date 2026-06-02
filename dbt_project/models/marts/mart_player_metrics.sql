@@ -22,6 +22,7 @@ with passes as (
 shots as (
     select
         player_id,
+        team_id,
         count(*)                                           as total_shots,
         sum(is_goal)                                       as goals,
         round(sum(xt_value)::numeric, 4)                   as total_xt_shots,
@@ -30,16 +31,17 @@ shots as (
         round(avg(xg_value)::numeric, 4)                   as avg_xg
     from {{ ref('stg_shots') }}
     where player_id is not null
-    group by player_id
+    group by player_id, team_id
 ),
 
 all_events as (
     select
         player_id,
+        team_id,
         round(sum(coalesce(xt_value, 0))::numeric, 4)     as total_xt
     from {{ ref('stg_events') }}
     where player_id is not null
-    group by player_id
+    group by player_id, team_id
 )
 
 select
@@ -64,7 +66,7 @@ select
     ae.total_xt,
     p.avg_xt_per_pass
 from passes p
-left join shots       s  on p.player_id = s.player_id
-left join all_events  ae on p.player_id = ae.player_id
+left join shots       s  on p.player_id = s.player_id and p.team_id = s.team_id
+left join all_events  ae on p.player_id = ae.player_id and p.team_id = ae.team_id
 left join {{ source('public', 'dim_players') }} dp on p.player_id = dp.player_id
 left join {{ source('public', 'dim_teams')   }} dt on p.team_id   = dt.team_id
