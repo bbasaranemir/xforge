@@ -227,6 +227,7 @@ def flatten_events(
     )
     df["xt_value"] = None
     df["xp_value"] = None
+    df["xg_value"] = None
     df["raw_json"] = df.apply(lambda r: r.to_json(), axis=1)
 
     return df[
@@ -247,6 +248,7 @@ def flatten_events(
             "under_pressure",
             "xt_value",
             "xp_value",
+            "xg_value",
             "raw_json",
         ]
     ]

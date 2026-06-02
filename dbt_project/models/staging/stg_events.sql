@@ -15,7 +15,8 @@ with source as (
         outcome,
         under_pressure,
         xt_value,
-        xp_value
+        xp_value,
+        xg_value
     from {{ source('public', 'fact_events') }}
     where location_x is not null
       and location_y is not null
@@ -38,5 +39,6 @@ select
     outcome,
     coalesce(under_pressure, false)        as under_pressure,
     xt_value,
-    xp_value
+    xp_value,
+    xg_value
 from source

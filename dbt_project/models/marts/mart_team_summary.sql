@@ -9,7 +9,9 @@ with base as (
         count(*) filter (where event_type = 'Carry')         as total_carries,
         round(sum(coalesce(xt_value, 0))::numeric, 4)        as total_xt,
         -- avg() ignores NULLs; coalesce(xp_value, 0) would skew the average down
-        round(avg(xp_value)::numeric, 4)                      as avg_xp
+        round(avg(xp_value)::numeric, 4)                      as avg_xp,
+        -- xg_value is non-NULL only for shots; sum() ignores NULLs naturally
+        round(sum(coalesce(xg_value, 0))::numeric, 4)         as total_xg
     from {{ ref('stg_events') }}
     where team_id is not null
     group by team_id
@@ -25,6 +27,7 @@ select
     b.total_pressures,
     b.total_carries,
     b.total_xt,
-    b.avg_xp
+    b.avg_xp,
+    b.total_xg
 from base b
 left join {{ source('public', 'dim_teams') }} dt on b.team_id = dt.team_id

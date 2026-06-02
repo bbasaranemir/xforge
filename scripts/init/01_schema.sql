@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS fact_events (
     under_pressure  BOOLEAN  DEFAULT FALSE,
     xt_value        FLOAT,
     xp_value        FLOAT,
+    xg_value        FLOAT,
     raw_json        JSONB,
     PRIMARY KEY (event_id, competition_id)
 ) PARTITION BY LIST (competition_id);
@@ -133,4 +134,6 @@ CREATE INDEX IF NOT EXISTS idx_fe_player      ON fact_events (player_id, competi
 CREATE INDEX IF NOT EXISTS idx_fe_type        ON fact_events (event_type, competition_id);
 CREATE INDEX IF NOT EXISTS idx_fe_xt          ON fact_events (xt_value, competition_id)
     WHERE xt_value IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_fe_xg          ON fact_events (xg_value, competition_id)
+    WHERE xg_value IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ingested_comp  ON ingested_matches (competition_id);

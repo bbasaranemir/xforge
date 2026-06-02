@@ -179,7 +179,7 @@ ORDER BY event_type, cluster_label
     # StatsBomb pitch: 120×80 units. Goal line at x=120, goal posts at y=36 & y=44.
     # 6-yard box:   x > 114, y BETWEEN 30 AND 50  (6 yards = ~6 pitch units from goal)
     # Penalty area: x > 102, y BETWEEN 18 AND 62  (18 yards = ~18 pitch units from goal)
-    # xP (pass completion) is NULL for shots — use xt_value as shot-quality proxy.
+    # xG (expected goals) is the correct metric for shot quality — populated by xg_model.py
     {
         "name": "Shot Quality by Zone",
         "sql": """
@@ -191,16 +191,16 @@ SELECT
     ELSE 'Own half / long range'
   END AS zone,
   COUNT(*) AS shots,
-  ROUND(AVG(xt_value)::numeric, 4) AS avg_xt
+  ROUND(AVG(xg_value)::numeric, 4) AS avg_xg
 FROM fact_events
-WHERE event_type = 'Shot' AND xt_value IS NOT NULL
+WHERE event_type = 'Shot' AND xg_value IS NOT NULL
 GROUP BY zone
-ORDER BY avg_xt DESC
+ORDER BY avg_xg DESC
 """.strip(),
         "viz_type": "table",
         "params": {
             "viz_type": "table",
-            "all_columns": ["zone", "shots", "avg_xt"],
+            "all_columns": ["zone", "shots", "avg_xg"],
             "metrics": [],
             "percent_metrics": [],
             "timeseries_limit_metric": None,

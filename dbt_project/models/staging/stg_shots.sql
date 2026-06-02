@@ -13,6 +13,7 @@ select
     outcome,
     under_pressure,
     xt_value,
+    xg_value,
     case when outcome = 'Goal' then 1 else 0 end as is_goal
 from {{ ref('stg_events') }}
 where event_type = 'Shot'

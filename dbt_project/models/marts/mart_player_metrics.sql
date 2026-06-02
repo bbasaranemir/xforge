@@ -24,7 +24,10 @@ shots as (
         player_id,
         count(*)                                           as total_shots,
         sum(is_goal)                                       as goals,
-        round(sum(xt_value)::numeric, 4)                   as total_xt_shots
+        round(sum(xt_value)::numeric, 4)                   as total_xt_shots,
+        -- xg_value populated after xg_model runs; avg() ignores NULLs
+        round(sum(xg_value)::numeric, 4)                   as total_xg,
+        round(avg(xg_value)::numeric, 4)                   as avg_xg
     from {{ ref('stg_shots') }}
     where player_id is not null
     group by player_id
@@ -52,6 +55,12 @@ select
     coalesce(s.total_shots, 0)                            as total_shots,
     coalesce(s.goals, 0)                                  as goals,
     coalesce(s.total_xt_shots, 0)                         as total_xt_shots,
+    coalesce(s.total_xg, 0)                               as total_xg,
+    s.avg_xg,
+    -- finishing_quality: positive = clinical finisher (goals > xG expectation)
+    round(
+        (coalesce(s.goals, 0) - coalesce(s.total_xg, 0))::numeric, 4
+    )                                                      as finishing_quality,
     ae.total_xt,
     p.avg_xt_per_pass
 from passes p

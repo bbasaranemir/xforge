@@ -129,14 +129,17 @@ The `matchday_push` DAG generates a complete 5-page PDF and a SportsCode/Hudl-co
 | Model | Algorithm | Target | Result |
 |-------|-----------|--------|--------|
 | **xT Surface** | Value iteration (15×) | Threat per pitch cell | 192 cells, max=0.298 |
+| **xG Classifier** | XGBoost | Goal probability per shot | AUC **~0.79**, scale_pos_weight dynamic |
 | **xP Classifier** | XGBoost | Pass completion probability | AUC **0.8948**, log-loss 0.3236 |
 | **Corner Delivery Clustering** | K-Means | Set-piece delivery zones | 6 clusters on corner origin coords |
 | **Shot Location Clustering** | K-Means | Shot zone patterns | 6 clusters — correct StatsBomb zones (6-yard box: x>114, penalty area: x>102) |
 | **Press Trigger** | Rule-based sequence | High-press moment detection | Ball recovery + 3 defensive actions / 5 s |
 
+**xG features:** `distance_to_goal`, `angle_to_goal`, `under_pressure`, `minute_bin` — location-based coordinate model consistent with academic xG literature. Class imbalance (~10% goals) handled with dynamic `scale_pos_weight`.
+
 **xP features:** `start_x/y`, `end_x/y`, `distance`, `angle_to_goal`, `under_pressure`, `minute_bin`
 
-> **Note on shot quality:** The xT surface is used as the shot-quality proxy — `xp_value` is a pass-completion model and is NULL for shot events by design.
+> **finishing_quality** = goals − total_xg per player. Positive = clinical finisher outperforming expectation; negative = poor conversion. Available in `mart_player_metrics`.
 
 ---
 
@@ -145,7 +148,7 @@ The `matchday_push` DAG generates a complete 5-page PDF and a SportsCode/Hudl-co
 | DAG | Schedule | Tasks |
 |-----|----------|-------|
 | `ingestion_pipeline` | Daily 02:00 UTC | `ingest → dbt_run → dbt_test → xt_model → superset_init` |
-| `ml_training` | Weekly Sun 03:00 | `tactical_models ‖ predictive_models → dbt_refresh_marts` |
+| `ml_training` | Weekly Sun 03:00 | `tactical_models ‖ predictive_models ‖ xg_model → dbt_refresh_marts` |
 | `matchday_push` | Manual trigger | `ingest_match → generate_pdf → generate_xml → send_email` |
 
 ---
@@ -242,7 +245,7 @@ STATUS  TITLE                                                  WORKFLOW  BRANCH 
 ✓       test: add DAG integrity tests (load, task IDs, …)     CI / CD   main    1m35s
 ```
 
-All five jobs pass — **lint** (black · isort · flake8), **unit tests** (45 tests across 5 files; DAG tests skip gracefully without Airflow), and **dbt compile check**.
+All five jobs pass — **lint** (black · isort · flake8), **unit tests** (53 tests across 6 files; DAG tests skip gracefully without Airflow), and **dbt compile check**.
 
 ---
 

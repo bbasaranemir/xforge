@@ -4,8 +4,9 @@ Schedule: weekly on Sunday at 03:00 UTC
 
 Tasks:
   tactical   — set-piece clustering (K-Means) + press trigger detection
-  predictive — XGBoost xP model training + prediction write-back
-  dbt_run    — refresh marts that include xP values
+  predictive — XGBoost xP model training + prediction write-back (passes)
+  xg_model   — XGBoost xG model training + prediction write-back (shots)
+  dbt_run    — refresh marts that include xP / xG values
 """
 
 from datetime import datetime, timedelta
@@ -45,6 +46,15 @@ def run_predictive():
     predictive_models.run()
 
 
+def run_xg():
+    import sys
+
+    sys.path.insert(0, SCRIPT_DIR)
+    import xg_model
+
+    xg_model.run()
+
+
 with DAG(
     dag_id="ml_training",
     description="Weekly tactical clustering + XGBoost xP model training",
@@ -68,14 +78,20 @@ with DAG(
         execution_timeout=timedelta(hours=2),
     )
 
+    xg = PythonOperator(
+        task_id="xg_model",
+        python_callable=run_xg,
+        execution_timeout=timedelta(hours=1),
+    )
+
     dbt_refresh = BashOperator(
         task_id="dbt_refresh_marts",
         bash_command=(
             f"{DBT_CMD} run --profiles-dir {DBT_DIR} --project-dir {DBT_DIR} "
-            "--select marts.mart_player_metrics marts.mart_competition_leaderboard"
+            "--select marts"
         ),
         execution_timeout=timedelta(minutes=20),
     )
 
-    # Tactical and predictive can run in parallel; dbt waits for both
-    [tactical, predictive] >> dbt_refresh
+    # All three ML tasks run in parallel; dbt waits for all
+    [tactical, predictive, xg] >> dbt_refresh
