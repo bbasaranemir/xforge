@@ -10,3 +10,25 @@ football_analytics:
       dbname: "{{ env_var('POSTGRES_DB') }}"
       schema: public
       threads: 4
+
+    # V2: used by main_pipeline_v2.py DAG and docker-compose local runs
+    docker:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'postgres') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_USER', 'analytics') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'analytics') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'football_db') }}"
+      schema: public
+      threads: 4
+
+    # V2: used by GitHub Actions CI — postgres reachable via 'postgres' alias
+    ci:
+      type: postgres
+      host: postgres
+      port: 5432
+      user: analytics
+      password: analytics
+      dbname: football_db
+      schema: public
+      threads: 4

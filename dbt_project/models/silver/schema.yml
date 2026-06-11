@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: silver_events
+    description: "Coordinate-normalised events in 105×68 metre universal pitch system"
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: match_id
+        tests: [not_null]
+      - name: event_type
+        tests: [not_null]
+      - name: provider
+        tests:
+          - accepted_values:
+              values: ['statsbomb', 'opta']
+      - name: location_x
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 105
+              inclusive: true
+      - name: location_y
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 68
+              inclusive: true
+
+  - name: silver_shots
+    description: "Shot events with pre-computed xG features on normalised 105×68 pitch"
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: distance_to_goal
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 130
+              inclusive: true
+      - name: shot_angle
+        tests:
+          - not_null
+      - name: is_goal
+        tests:
+          - accepted_values:
+              values: [0, 1]
+
+  - name: silver_passes
+    description: "Pass events with distance in metres on normalised 105×68 pitch"
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: pass_distance_m
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 150
+              inclusive: true

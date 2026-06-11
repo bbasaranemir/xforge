@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dbt-parse:
+    name: dbt syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dbt
+        run: pip install dbt-postgres==1.7.10
+
+      - name: dbt deps + parse
+        working-directory: dbt_project
+        env:
+          POSTGRES_USER: analytics
+          POSTGRES_PASSWORD: analytics
+          POSTGRES_DB: football_db
+        run: |
+          dbt deps --profiles-dir . --target ci
+          dbt parse --profiles-dir . --target ci
+
+  dart-build:
+    name: Dart AOT build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build Dart ingestion image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./dart_ingestion
+          load: true
+          tags: dart_ingestion:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Health smoke test
+        run: |
+          docker run -d --name dart_smoke --network host \
+            -e DB_HOST=localhost \
+            dart_ingestion:latest
+
+          for i in {1..20}; do
+            curl -sf http://localhost:8090/health && echo "Dart OK" && exit 0
+            sleep 2
+          done
+          echo "Dart service did not become healthy" && exit 1
+
+  python-lint:
+    name: Python lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff==0.4.4
+
+      - name: Lint
+        run: ruff check scripts/ dags/

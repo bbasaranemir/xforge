@@ -1,0 +1,192 @@
+name: xForge V2 Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      match_id:
+        description: "StatsBomb match ID"
+        required: false
+        default: "3869685"
+      competition_id:
+        description: "Competition ID (StatsBomb)"
+        required: false
+        default: "43"
+      provider:
+        description: "Data provider"
+        required: false
+        default: "statsbomb"
+        type: choice
+        options: [statsbomb, opta]
+
+env:
+  MATCH_ID: ${{ github.event.inputs.match_id || '3869685' }}
+  COMPETITION_ID: ${{ github.event.inputs.competition_id || '43' }}
+  PROVIDER: ${{ github.event.inputs.provider || 'statsbomb' }}
+  POSTGRES_USER: analytics
+  POSTGRES_PASSWORD: analytics
+  POSTGRES_DB: football_db
+  POSTGRES_HOST: postgres
+  PGPASSWORD: analytics
+
+jobs:
+  pipeline:
+    name: Full V2 pipeline
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: analytics
+          POSTGRES_PASSWORD: analytics
+          POSTGRES_DB: football_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 'postgres' hostname resolves to localhost — all scripts/dbt work unchanged
+      - name: Map 'postgres' hostname
+        run: echo "127.0.0.1 postgres" | sudo tee -a /etc/hosts
+
+      # ── Python ─────────────────────────────────────────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # ── Database ────────────────────────────────────────────────────────────
+      - name: Init schema V1
+        run: psql -h localhost -U analytics -d football_db -f scripts/init/01_schema.sql
+
+      - name: Init schema V2 migration
+        run: psql -h localhost -U analytics -d football_db -f scripts/init/02_v2_migration.sql
+
+      # ── Dart ingestion ──────────────────────────────────────────────────────
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build Dart image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./dart_ingestion
+          load: true
+          tags: dart_ingestion:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start Dart service
+        run: |
+          docker run -d --name dart_ingestion --network host \
+            -e DB_HOST=postgres \
+            -e DB_PORT=5432 \
+            -e DB_NAME=football_db \
+            -e DB_USER=analytics \
+            -e DB_PASS=analytics \
+            dart_ingestion:latest
+
+      - name: Wait for Dart health
+        run: |
+          for i in {1..30}; do
+            curl -sf http://localhost:8090/health && echo "Dart ready" && break
+            [ "$i" -eq 30 ] && echo "Dart never became healthy" && exit 1
+            sleep 2
+          done
+
+      - name: Ingest match data
+        run: |
+          RESULT=$(curl -sf -X POST http://localhost:8090/ingest \
+            -H "Content-Type: application/json" \
+            -d "{\"provider\":\"$PROVIDER\",\"match_id\":$MATCH_ID,\"competition_id\":$COMPETITION_ID}")
+          echo "Ingest result: $RESULT"
+          echo "$RESULT" | python -c "
+          import sys, json
+          r = json.load(sys.stdin)
+          written = r.get('written', 0)
+          print(f'Events written: {written}')
+          # 0 written is valid on retry (all events already in DB via ON CONFLICT DO NOTHING)
+          exit(0)
+          "
+
+      # ── dbt medallion ────────────────────────────────────────────────────────
+      - name: dbt deps
+        working-directory: dbt_project
+        run: dbt deps --profiles-dir . --target ci
+
+      - name: dbt bronze
+        working-directory: dbt_project
+        run: |
+          dbt run  --select bronze --profiles-dir . --target ci
+          dbt test --select bronze --profiles-dir . --target ci
+
+      - name: dbt silver
+        working-directory: dbt_project
+        run: |
+          dbt run  --select silver --profiles-dir . --target ci
+          dbt test --select silver --profiles-dir . --target ci
+
+      # ── ML models ────────────────────────────────────────────────────────────
+      - name: Compute xG model
+        run: python scripts/xg_model.py
+
+      - name: Compute xT model
+        run: python scripts/xt_model.py
+
+      # ── Gold layer ────────────────────────────────────────────────────────────
+      - name: dbt gold
+        working-directory: dbt_project
+        run: |
+          dbt run  --select gold --profiles-dir . --target ci
+          dbt test --select gold --profiles-dir . --target ci
+
+      # ── BI outputs ────────────────────────────────────────────────────────────
+      - name: Refresh materialized views
+        run: python scripts/refresh_materialized_views.py
+
+      - name: Export Sportscode XML
+        run: |
+          mkdir -p data
+          python scripts/xml_generator.py
+
+      # ── Artefacts ─────────────────────────────────────────────────────────────
+      - name: Upload XML output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sportscode-xml-match-${{ env.MATCH_ID }}
+          path: data/*.xml
+          retention-days: 30
+
+      - name: Upload dbt logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dbt-logs
+          path: dbt_project/logs/
+          retention-days: 7
+
+      # ── Summary ───────────────────────────────────────────────────────────────
+      - name: Pipeline summary
+        if: always()
+        run: |
+          echo "## xForge V2 Pipeline" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Match ID | $MATCH_ID |" >> $GITHUB_STEP_SUMMARY
+          echo "| Competition ID | $COMPETITION_ID |" >> $GITHUB_STEP_SUMMARY
+          echo "| Provider | $PROVIDER |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          psql -h localhost -U analytics -d football_db -c \
+            "SELECT team_name, total_shots, total_xg, goals_scored, conversion_rate FROM mv_team_xg;" \
+            >> $GITHUB_STEP_SUMMARY 2>/dev/null || true

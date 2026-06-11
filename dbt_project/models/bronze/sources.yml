@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: public
+    database: football_db
+    schema: public
+    tables:
+      - name: fact_events
+        description: "Raw events loaded by the Dart ingestion service (multi-provider)"
+        columns:
+          - name: event_id
+            tests: [unique, not_null]
+          - name: match_id
+            tests: [not_null]
+          - name: event_type
+            tests: [not_null]
+          - name: provider
+            tests:
+              - accepted_values:
+                  values: ['statsbomb', 'opta']
+          - name: coord_system
+            tests:
+              - accepted_values:
+                  values: ['statsbomb_120x80', 'opta_100x100']
+
+      - name: dim_matches
+      - name: dim_players
+      - name: dim_teams

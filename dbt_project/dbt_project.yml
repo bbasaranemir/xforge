@@ -20,3 +20,13 @@ models:
     marts:
       +materialized: table
       +schema: analytics_marts
+    # V2 medallion layers
+    bronze:
+      +materialized: table
+      +schema: bronze
+    silver:
+      +materialized: view
+      +schema: silver
+    gold:
+      +materialized: table
+      +schema: gold
