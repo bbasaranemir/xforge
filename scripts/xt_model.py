@@ -1,6 +1,7 @@
 import logging
 import os
 from typing import Tuple
+
 import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -11,13 +12,13 @@ log = logging.getLogger(__name__)
 _user = os.environ.get("POSTGRES_USER", "analytics")
 _pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
 _host = os.environ.get("POSTGRES_HOST", "postgres")
-_db   = os.environ.get("POSTGRES_DB",   "football_db")
+_db = os.environ.get("POSTGRES_DB", "football_db")
 DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 
 GRID_COLS = 16
 GRID_ROWS = 12
-PITCH_X = 105.0   # V2: universal 105×68 metric pitch (was 120.0)
-PITCH_Y = 68.0    # V2: universal 105×68 metric pitch (was 80.0)
+PITCH_X = 105.0  # V2: universal 105×68 metric pitch (was 120.0)
+PITCH_Y = 68.0  # V2: universal 105×68 metric pitch (was 80.0)
 ITERATIONS = 10
 
 

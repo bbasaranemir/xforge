@@ -76,17 +76,49 @@ def _run_dbt(command: list[str]) -> None:
 
 # ─── Task callables ────────────────────────────────────────────────────────
 
-def task_dbt_deps(**_):          _run_dbt(["deps"])
-def task_dbt_run_bronze(**_):    _run_dbt(["run",  "--select", "bronze"])
-def task_dbt_test_bronze(**_):   _run_dbt(["test", "--select", "bronze"])
-def task_dbt_run_silver(**_):    _run_dbt(["run",  "--select", "silver"])
-def task_dbt_test_silver(**_):   _run_dbt(["test", "--select", "silver"])
-def task_dbt_run_gold(**_):      _run_dbt(["run",  "--select", "gold"])
-def task_dbt_test_gold(**_):     _run_dbt(["test", "--select", "gold"])
-def task_xg_model(**_):          _run_script("xg_model.py")
-def task_xt_model(**_):          _run_script("xt_model.py")
-def task_mv_refresh(**_):        _run_script("refresh_materialized_views.py")
-def task_xml_export(**_):        _run_script("xml_generator.py")
+
+def task_dbt_deps(**_):
+    _run_dbt(["deps"])
+
+
+def task_dbt_run_bronze(**_):
+    _run_dbt(["run", "--select", "bronze"])
+
+
+def task_dbt_test_bronze(**_):
+    _run_dbt(["test", "--select", "bronze"])
+
+
+def task_dbt_run_silver(**_):
+    _run_dbt(["run", "--select", "silver"])
+
+
+def task_dbt_test_silver(**_):
+    _run_dbt(["test", "--select", "silver"])
+
+
+def task_dbt_run_gold(**_):
+    _run_dbt(["run", "--select", "gold"])
+
+
+def task_dbt_test_gold(**_):
+    _run_dbt(["test", "--select", "gold"])
+
+
+def task_xg_model(**_):
+    _run_script("xg_model.py")
+
+
+def task_xt_model(**_):
+    _run_script("xt_model.py")
+
+
+def task_mv_refresh(**_):
+    _run_script("refresh_materialized_views.py")
+
+
+def task_xml_export(**_):
+    _run_script("xml_generator.py")
 
 
 def task_pipeline_summary(**context):
@@ -125,10 +157,15 @@ with DAG(
         image="dart_ingestion:latest",
         # List format avoids shell quoting issues with JSON payload
         command=[
-            "curl", "-sf", "-X", "POST",
+            "curl",
+            "-sf",
+            "-X",
+            "POST",
             "http://dart_ingestion:8090/ingest",
-            "-H", "Content-Type: application/json",
-            "-d", f'{{"provider":"statsbomb","match_id":{MATCH_ID}}}',
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            f'{{"provider":"statsbomb","match_id":{MATCH_ID}}}',
         ],
         network_mode="analytics_net",
         auto_remove=True,
@@ -203,11 +240,14 @@ with DAG(
 
     # ─── DAG dependency chain ─────────────────────────────────────────────
     (
-        [dbt_deps, ingest_dart]            # parallel: install packages + ingest data
-        >> dbt_run_bronze >> dbt_test_bronze
-        >> dbt_run_silver >> dbt_test_silver
-        >> [xg_compute, xt_compute]        # parallel ML
-        >> dbt_run_gold >> dbt_test_gold
-        >> [mv_refresh, xml_export]        # parallel output
+        [dbt_deps, ingest_dart]  # parallel: install packages + ingest data
+        >> dbt_run_bronze
+        >> dbt_test_bronze
+        >> dbt_run_silver
+        >> dbt_test_silver
+        >> [xg_compute, xt_compute]  # parallel ML
+        >> dbt_run_gold
+        >> dbt_test_gold
+        >> [mv_refresh, xml_export]  # parallel output
         >> summary
     )

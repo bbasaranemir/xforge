@@ -13,15 +13,15 @@ log = logging.getLogger(__name__)
 _user = os.environ.get("POSTGRES_USER", "analytics")
 _pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
 _host = os.environ.get("POSTGRES_HOST", "postgres")
-_db   = os.environ.get("POSTGRES_DB",   "football_db")
+_db = os.environ.get("POSTGRES_DB", "football_db")
 DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 OUTPUT_DIR = Path(__file__).parent.parent / "data"
 
 # StatsBomb events do not carry a real video timestamp.
 # minute/second are mapped to milliseconds as a reference offset.
 # Hudl/SportsCode uses ms-based in/out points relative to clip start.
-CLIP_LEAD_MS = 3000   # pre-roll before action
-CLIP_LAG_MS = 5000    # post-roll after action
+CLIP_LEAD_MS = 3000  # pre-roll before action
+CLIP_LAG_MS = 5000  # post-roll after action
 
 
 def get_engine():

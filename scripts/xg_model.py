@@ -1,13 +1,14 @@
 import logging
 import os
+
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
 import xgboost as xgb
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import roc_auc_score, brier_score_loss
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.metrics import brier_score_loss, roc_auc_score
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
+from sqlalchemy import create_engine, text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -15,7 +16,7 @@ log = logging.getLogger(__name__)
 _user = os.environ.get("POSTGRES_USER", "analytics")
 _pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
 _host = os.environ.get("POSTGRES_HOST", "postgres")
-_db   = os.environ.get("POSTGRES_DB",   "football_db")
+_db = os.environ.get("POSTGRES_DB", "football_db")
 DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 
 # Features must match silver_shots view columns
