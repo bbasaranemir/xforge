@@ -69,7 +69,14 @@ def train_xgboost(X: np.ndarray, y: np.ndarray) -> CalibratedClassifierCV:
     Calibration ensures xG=0.3 means ~30% conversion probability,
     not just a relative ranking. This is a requirement for proper xG.
     """
-    base_clf = xgb.XGBClassifier(
+
+    # sklearn 1.4 CyHalfBinomialLoss requires float64; XGBoost outputs float32.
+    # Subclass to prevent a buffer-dtype mismatch ValueError during Platt fitting.
+    class _XGBFloat64(xgb.XGBClassifier):
+        def predict_proba(self, X):
+            return super().predict_proba(X).astype(np.float64)
+
+    base_clf = _XGBFloat64(
         n_estimators=300,
         max_depth=4,
         learning_rate=0.05,
@@ -78,7 +85,10 @@ def train_xgboost(X: np.ndarray, y: np.ndarray) -> CalibratedClassifierCV:
         eval_metric="logloss",
         random_state=42,
     )
-    calibrated = CalibratedClassifierCV(base_clf, cv=5, method="sigmoid")
+    # cv must not exceed the number of positive-class samples to avoid empty
+    # folds; single-match datasets (~38 shots, ~4 goals) need cv=2 or 3.
+    cv = min(5, max(2, int(y.sum())))
+    calibrated = CalibratedClassifierCV(base_clf, cv=cv, method="sigmoid")
     calibrated.fit(X, y)
     return calibrated
 
