@@ -7,6 +7,7 @@ numpy==1.26.3
 sqlalchemy==2.0.25
 psycopg2-binary==2.9.9
 dbt-postgres==1.7.4
+protobuf>=4.0.0,<5.0.0
 scikit-learn==1.4.0
 xgboost==2.0.3
 scipy==1.12.0
