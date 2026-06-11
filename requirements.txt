@@ -14,4 +14,5 @@ mplsoccer==1.2.4
 matplotlib==3.8.2
 requests==2.31.0
 joblib==1.3.2
-apache-airflow-providers-docker==3.9.2
+# apache-airflow-providers-docker is provided by the Airflow Docker image at runtime.
+# DAG files (dags/) are loaded by Airflow's scheduler, not run from this requirements file.
