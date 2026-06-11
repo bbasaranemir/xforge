@@ -1,0 +1,18 @@
+name: dart_ingestion
+description: Multi-provider football event ingestion service for xForge V2
+version: 2.0.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  postgres: ^3.3.0
+  http: ^1.2.0
+  args: ^2.4.2
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^3.0.0

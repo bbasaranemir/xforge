@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: gold_player_metrics
+    description: "Per-player match summary: passes, shots, xT, xG, goals"
+    columns:
+      - name: player_id
+        tests: [not_null]
+      - name: match_id
+        tests: [not_null]
+
+  - name: gold_team_summary
+    description: "Per-team match summary: total_xg, total_xt, conversion_rate"
+    columns:
+      - name: team_id
+        tests: [not_null]
+      - name: match_id
+        tests: [not_null]
+
+  - name: gold_shot_map
+    description: "Shot locations on 105×68 pitch with xG values for BI scatter plots"
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+
+  - name: gold_xt_grid
+    description: "xT threat surface aggregated to 16×12 grid on 105×68 pitch"

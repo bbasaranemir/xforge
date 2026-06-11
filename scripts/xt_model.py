@@ -1,289 +1,201 @@
-"""
-xT (Expected Threat) surface computation via value iteration.
-
-Memory-efficient:
-  - psycopg2 server-side cursor for true streaming (no RAM spike)
-  - execute_values() bulk-insert into staging table
-  - Single UPDATE fact_events FROM staging (one pass, index-friendly)
-"""
-
 import logging
 import os
 from typing import Tuple
-
 import numpy as np
 import pandas as pd
-import psycopg2
-import psycopg2.extras
 from sqlalchemy import create_engine, text
 
-log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger(__name__)
+
+_user = os.environ.get("POSTGRES_USER", "analytics")
+_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
+_host = os.environ.get("POSTGRES_HOST", "postgres")
+_db   = os.environ.get("POSTGRES_DB",   "football_db")
+DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 
 GRID_COLS = 16
 GRID_ROWS = 12
-PITCH_X = 120.0
-PITCH_Y = 80.0
-ITERATIONS = 15
-CHUNK_SIZE = 50_000
-
-QUERY_COLS = [
-    "event_id",
-    "event_type",
-    "location_x",
-    "location_y",
-    "end_location_x",
-    "end_location_y",
-    "outcome",
-]
-
-QUERY = """
-    SELECT event_id, event_type,
-           location_x, location_y,
-           end_location_x, end_location_y,
-           outcome
-    FROM fact_events
-    WHERE location_x IS NOT NULL
-      AND location_y IS NOT NULL
-      AND event_type IN ('Pass', 'Carry', 'Shot')
-"""
-
-
-def _conn_params() -> dict:
-    return dict(
-        host=os.environ.get("POSTGRES_HOST", "postgres"),
-        port=int(os.environ.get("POSTGRES_PORT", 5432)),
-        dbname=os.environ["POSTGRES_DB"],
-        user=os.environ["POSTGRES_USER"],
-        password=os.environ["POSTGRES_PASSWORD"],
-    )
+PITCH_X = 105.0   # V2: universal 105×68 metric pitch (was 120.0)
+PITCH_Y = 68.0    # V2: universal 105×68 metric pitch (was 80.0)
+ITERATIONS = 10
 
 
 def get_engine():
-    p = _conn_params()
-    url = (
-        f"postgresql+psycopg2://{p['user']}:{p['password']}"
-        f"@{p['host']}:{p['port']}/{p['dbname']}"
-    )
-    return create_engine(url, pool_pre_ping=True, pool_size=2, max_overflow=0)
+    return create_engine(DB_URL, pool_pre_ping=True)
 
 
-def _stream_chunks(cursor_name: str):
-    """True server-side cursor — fetches CHUNK_SIZE rows at a time."""
-    conn = psycopg2.connect(**_conn_params())
-    conn.autocommit = False
-    cur = conn.cursor(cursor_name)
-    cur.execute(QUERY)
-    while True:
-        rows = cur.fetchmany(CHUNK_SIZE)
-        if not rows:
-            break
-        yield pd.DataFrame(rows, columns=QUERY_COLS)
-    cur.close()
-    conn.close()
+def _to_grid(x: float, y: float) -> Tuple[int, int]:
+    col = int(min(x / (PITCH_X / GRID_COLS), GRID_COLS - 1))
+    row = int(min(y / (PITCH_Y / GRID_ROWS), GRID_ROWS - 1))
+    return col, row
 
 
-def _to_grid_vec(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    cols = np.minimum((x / (PITCH_X / GRID_COLS)).astype(int), GRID_COLS - 1)
-    rows = np.minimum((y / (PITCH_Y / GRID_ROWS)).astype(int), GRID_ROWS - 1)
-    return cols, rows
+def fetch_actions(engine) -> pd.DataFrame:
+    query = text("""
+        SELECT
+            event_id,
+            event_type,
+            location_x,
+            location_y,
+            end_location_x,
+            end_location_y,
+            outcome
+        FROM analytics_silver.silver_events
+        WHERE location_x IS NOT NULL
+          AND location_y IS NOT NULL
+          AND event_type IN ('Pass', 'Carry', 'Shot')
+    """)
+    with engine.connect() as conn:
+        df = pd.read_sql(query, conn)
+    log.info("Fetched %d actions for xT computation", len(df))
+    return df
 
 
-def build_matrices():
+def build_matrices(df: pd.DataFrame):
     n = GRID_COLS * GRID_ROWS
+
+    # shot_count[cell] = shots taken from cell
+    # goal_count[cell] = goals scored from cell
+    # move_count[from_cell, to_cell] = successful moves between cells
+    # action_count[cell] = total on-ball actions from cell
+
     shot_count = np.zeros(n)
     goal_count = np.zeros(n)
     move_matrix = np.zeros((n, n))
     action_count = np.zeros(n)
-    total = 0
 
-    for chunk in _stream_chunks("xt_build_cur"):
-        total += len(chunk)
-        lx = chunk["location_x"].to_numpy(dtype=float)
-        ly = chunk["location_y"].to_numpy(dtype=float)
-        c, r = _to_grid_vec(lx, ly)
-        cells = r * GRID_COLS + c
-        np.add.at(action_count, cells, 1)
+    for _, row in df.iterrows():
+        col, r = _to_grid(row["location_x"], row["location_y"])
+        cell = r * GRID_COLS + col
+        action_count[cell] += 1
 
-        mask_shot = chunk["event_type"].to_numpy() == "Shot"
-        np.add.at(shot_count, cells[mask_shot], 1)
-        mask_goal = mask_shot & (chunk["outcome"].fillna("").to_numpy() == "Goal")
-        np.add.at(goal_count, cells[mask_goal], 1)
+        if row["event_type"] == "Shot":
+            shot_count[cell] += 1
+            if row["outcome"] in ("Goal",):
+                goal_count[cell] += 1
 
-        mask_move = (
-            chunk["event_type"].isin(["Pass", "Carry"]).to_numpy()
-            & chunk["end_location_x"].notna().to_numpy()
-            & chunk["end_location_y"].notna().to_numpy()
-            & (
-                chunk["outcome"].isna() | chunk["outcome"].isin(["Unknown", ""])
-            ).to_numpy()
-        )
-        if mask_move.any():
-            ex = chunk.loc[mask_move, "end_location_x"].to_numpy(dtype=float)
-            ey = chunk.loc[mask_move, "end_location_y"].to_numpy(dtype=float)
-            ec, er = _to_grid_vec(ex, ey)
-            np.add.at(move_matrix, (cells[mask_move], er * GRID_COLS + ec), 1)
+        elif row["event_type"] in ("Pass", "Carry"):
+            # Only successful moves update the transition matrix
+            # StatsBomb: successful pass has no outcome label → SQL NULL → pandas NaN
+            outcome_ok = pd.isna(row["outcome"]) or row["outcome"] in ("Unknown", None, "")
+            if (
+                pd.notna(row["end_location_x"])
+                and pd.notna(row["end_location_y"])
+                and outcome_ok
+            ):
+                ec, er = _to_grid(row["end_location_x"], row["end_location_y"])
+                end_cell = er * GRID_COLS + ec
+                move_matrix[cell, end_cell] += 1
 
-    log.info("Matrix build complete: %d actions processed", total)
+    # Normalise shot probability per cell
     shot_prob = np.where(action_count > 0, shot_count / action_count, 0.0)
+
+    # Goal probability given shot
     goal_prob = np.where(shot_count > 0, goal_count / shot_count, 0.0)
-    totals = move_matrix.sum(axis=1, keepdims=True)
-    transition = np.where(totals > 0, move_matrix / totals, 0.0)
+
+    # Transition probability matrix: P(end_cell | start_cell, move action taken)
+    move_totals = move_matrix.sum(axis=1, keepdims=True)
+    transition = np.where(move_totals > 0, move_matrix / move_totals, 0.0)
+
     return shot_prob, goal_prob, transition
 
 
 def solve_xt(shot_prob, goal_prob, transition) -> np.ndarray:
+    """
+    xT[z] = S[z]*G[z] + (1-S[z]) * sum_z'(T[z,z'] * xT[z'])
+    Solved by value iteration for ITERATIONS steps.
+    """
     xt = np.zeros(GRID_COLS * GRID_ROWS)
+
     for _ in range(ITERATIONS):
         xt = shot_prob * goal_prob + (1 - shot_prob) * (transition @ xt)
+
     return xt
 
 
-def compute_and_write_xt(surface: np.ndarray) -> None:
+def compute_event_xt(df: pd.DataFrame, xt_surface: np.ndarray) -> pd.DataFrame:
     """
-    1. Stream events via server-side cursor
-    2. Bulk-insert (event_id, xt_value) into a PERSISTENT staging table
-    3. Per-competition-partition UPDATE with individual commits (resumable)
-       - Skips rows already updated (xt_value IS NOT NULL)
-       - Safe to restart: progress accumulates across runs
+    Per-event xT = xT[end_cell] - xT[start_cell] for successful passes/carries.
+    Shots get xT = shot_prob * goal_prob at that cell (already in surface).
     """
-    conn = psycopg2.connect(**_conn_params())
-    conn.autocommit = False
-    cur = conn.cursor()
+    records = []
 
-    # Persistent (non-TEMP) staging table — survives DB restarts
-    cur.execute("DROP TABLE IF EXISTS _xt_staging")
-    cur.execute(
-        "CREATE TABLE _xt_staging " "(event_id TEXT, xt_value DOUBLE PRECISION)"
-    )
-    conn.commit()
-    log.info("Staging table created.")
+    for _, row in df.iterrows():
+        if pd.isna(row["location_x"]) or pd.isna(row["location_y"]):
+            continue
 
-    total_written = 0
-    for chunk in _stream_chunks("xt_write_cur"):
-        lx = chunk["location_x"].to_numpy(dtype=float)
-        ly = chunk["location_y"].to_numpy(dtype=float)
-        c, r = _to_grid_vec(lx, ly)
-        start_cells = r * GRID_COLS + c
-        start_vals = surface[start_cells]
+        col, r = _to_grid(row["location_x"], row["location_y"])
+        start_cell = r * GRID_COLS + col
+        start_xt = xt_surface[start_cell]
 
-        mask_shot = chunk["event_type"].to_numpy() == "Shot"
-        mask_move = (
-            chunk["event_type"].isin(["Pass", "Carry"]).to_numpy()
-            & chunk["end_location_x"].notna().to_numpy()
-            & chunk["end_location_y"].notna().to_numpy()
-            & (
-                chunk["outcome"].isna() | chunk["outcome"].isin(["Unknown", ""])
-            ).to_numpy()
-        )
+        if row["event_type"] == "Shot":
+            delta = float(xt_surface[start_cell])
+        elif (
+            row["event_type"] in ("Pass", "Carry")
+            and pd.notna(row["end_location_x"])
+            and pd.notna(row["end_location_y"])
+            and (pd.isna(row["outcome"]) or row["outcome"] in ("Unknown", None, ""))
+        ):
+            ec, er = _to_grid(row["end_location_x"], row["end_location_y"])
+            end_cell = er * GRID_COLS + ec
+            delta = float(xt_surface[end_cell] - start_xt)
+        else:
+            continue
 
-        tuples = []
-        if mask_shot.any():
-            tuples.extend(
-                (str(eid), round(float(v), 6))
-                for eid, v in zip(
-                    chunk.loc[mask_shot, "event_id"], start_vals[mask_shot]
-                )
-            )
-        if mask_move.any():
-            ex = chunk.loc[mask_move, "end_location_x"].to_numpy(dtype=float)
-            ey = chunk.loc[mask_move, "end_location_y"].to_numpy(dtype=float)
-            ec, er = _to_grid_vec(ex, ey)
-            end_vals = surface[er * GRID_COLS + ec]
-            deltas = end_vals - start_vals[mask_move]
-            tuples.extend(
-                (str(eid), round(float(d), 6))
-                for eid, d in zip(chunk.loc[mask_move, "event_id"], deltas)
-            )
+        records.append({"event_id": row["event_id"], "xt_value": round(delta, 6)})
 
-        if tuples:
-            psycopg2.extras.execute_values(
-                cur,
-                "INSERT INTO _xt_staging (event_id, xt_value) VALUES %s",
-                tuples,
-                page_size=5000,
-            )
-            total_written += len(tuples)
-            if total_written % 500_000 < len(tuples):
-                log.info("Staged %d xT records so far...", total_written)
-
-    conn.commit()
-    log.info("All %d records staged. Starting per-partition UPDATE...", total_written)
-
-    # Fetch all competition partitions that still need updating
-    cur.execute(
-        "SELECT DISTINCT competition_id FROM fact_events "
-        "WHERE xt_value IS NULL ORDER BY competition_id"
-    )
-    comp_ids = [row[0] for row in cur.fetchall()]
-    log.info("Found %d competition partitions to update.", len(comp_ids))
-
-    updated_total = 0
-    for i, comp_id in enumerate(comp_ids, 1):
-        cur.execute(
-            "UPDATE fact_events fe "
-            "SET xt_value = s.xt_value "
-            "FROM _xt_staging s "
-            "WHERE fe.event_id = s.event_id::uuid "
-            "AND fe.competition_id = %s "
-            "AND fe.xt_value IS NULL",
-            (comp_id,),
-        )
-        updated_total += cur.rowcount
-        conn.commit()
-        log.info(
-            "Partition %d/%d (comp_id=%s) → %d rows | cumulative=%d",
-            i,
-            len(comp_ids),
-            comp_id,
-            cur.rowcount,
-            updated_total,
-        )
-
-    cur.execute("DROP TABLE IF EXISTS _xt_staging")
-    conn.commit()
-    log.info("All partitions updated. Total rows written: %d", updated_total)
-    cur.close()
-    conn.close()
+    return pd.DataFrame(records)
 
 
-def write_xt_surface(engine, surface: np.ndarray) -> None:
-    rows = [
-        {"col": col, "row": row, "xt": round(float(surface[row * GRID_COLS + col]), 6)}
-        for row in range(GRID_ROWS)
-        for col in range(GRID_COLS)
-    ]
+def write_xt_values(engine, xt_df: pd.DataFrame):
     with engine.begin() as conn:
+        for _, row in xt_df.iterrows():
+            conn.execute(
+                text("UPDATE fact_events SET xt_value = :xt WHERE event_id = :eid"),
+                {"xt": row["xt_value"], "eid": row["event_id"]},
+            )
+    log.info("Updated xt_value for %d events", len(xt_df))
+
+
+def write_xt_surface(engine, xt_surface: np.ndarray):
+    """Persists the 16x12 xT surface to a dedicated table for Superset heatmap."""
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS xt_surface (
+                grid_col  INTEGER,
+                grid_row  INTEGER,
+                xt_value  FLOAT,
+                PRIMARY KEY (grid_col, grid_row)
+            )
+        """))
         conn.execute(text("TRUNCATE xt_surface"))
-        conn.execute(
-            text(
-                "INSERT INTO xt_surface (grid_col, grid_row, xt_value) "
-                "VALUES (:col, :row, :xt)"
-            ),
-            rows,
-        )
-    log.info("xt_surface written: %d cells", GRID_COLS * GRID_ROWS)
+        for row in range(GRID_ROWS):
+            for col in range(GRID_COLS):
+                cell = row * GRID_COLS + col
+                conn.execute(
+                    text("INSERT INTO xt_surface VALUES (:col, :row, :xt)"),
+                    {"col": col, "row": row, "xt": round(float(xt_surface[cell]), 6)},
+                )
+    log.info("xt_surface table written: %d cells", GRID_COLS * GRID_ROWS)
 
 
-def run() -> None:
+def run():
     engine = get_engine()
 
-    log.info("Building xT matrices (server-side cursor, %d rows/chunk)...", CHUNK_SIZE)
-    shot_prob, goal_prob, transition = build_matrices()
+    df = fetch_actions(engine)
+    shot_prob, goal_prob, transition = build_matrices(df)
+    xt_surface = solve_xt(shot_prob, goal_prob, transition)
 
-    log.info("Solving xT surface (%d iterations)...", ITERATIONS)
-    surface = solve_xt(shot_prob, goal_prob, transition)
     log.info(
-        "xT surface — min=%.4f max=%.4f mean=%.4f",
-        surface.min(),
-        surface.max(),
-        surface.mean(),
+        "xT surface stats — min: %.4f, max: %.4f, mean: %.4f",
+        xt_surface.min(), xt_surface.max(), xt_surface.mean(),
     )
 
-    log.info("Computing and staging xT values...")
-    compute_and_write_xt(surface)
+    xt_df = compute_event_xt(df, xt_surface)
+    write_xt_values(engine, xt_df)
+    write_xt_surface(engine, xt_surface)
 
-    write_xt_surface(engine, surface)
     log.info("xT computation complete.")
 
 
