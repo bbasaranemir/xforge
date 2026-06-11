@@ -66,5 +66,9 @@ LEFT JOIN dim_players dp ON fe.player_id  = dp.player_id
 LEFT JOIN dim_teams   dt ON fe.team_id    = dt.team_id
 WHERE fe.event_type = 'Shot';
 
+-- event_id is the natural unique key — required for REFRESH CONCURRENTLY
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_shot_locations_event
+    ON mv_shot_locations (event_id);
+
 CREATE INDEX IF NOT EXISTS idx_mv_shot_locations_match
     ON mv_shot_locations (match_id);
