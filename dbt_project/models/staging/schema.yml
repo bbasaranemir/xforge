@@ -5,7 +5,7 @@ sources:
     schema: public
     tables:
       - name: fact_events
-        description: "Partitioned event table — all StatsBomb on-ball actions"
+        description: "Partitioned event table — multi-provider on-ball actions"
         columns:
           - name: event_id
             tests: [not_null]
@@ -13,6 +13,14 @@ sources:
             tests: [not_null]
           - name: match_id
             tests: [not_null]
+          - name: provider
+            tests:
+              - accepted_values:
+                  values: ['statsbomb', 'opta']
+          - name: coord_system
+            tests:
+              - accepted_values:
+                  values: ['statsbomb_120x80', 'opta_100x100']
 
       - name: dim_players
         description: "Player dimension"
