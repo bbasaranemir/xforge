@@ -48,7 +48,7 @@ passes as (
         team_id,
         count(*)                                           as total_passes,
         sum(is_successful::int)                            as successful_passes,
-        round(avg(is_successful::numeric) * 100, 1)       as pass_completion_pct,
+        round(avg(is_successful::int)::numeric * 100, 1)  as pass_completion_pct,
         round(avg(pass_distance_m)::numeric, 2)           as avg_pass_distance_m,
         round(sum(coalesce(xt_value, 0))::numeric, 4)     as total_xt_passes,
         round(
