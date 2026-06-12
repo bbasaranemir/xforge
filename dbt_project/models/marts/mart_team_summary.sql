@@ -1,4 +1,20 @@
-with base as (
+-- Per-team action volume and threat metrics across all ingested matches.
+-- Reads from silver_events (normalised 105×68) and joins fact_events for ML values.
+
+with events as (
+    select
+        se.event_id,
+        se.team_id,
+        se.event_type,
+        fe.xt_value,
+        fe.xg_value,
+        fe.xp_value
+    from {{ ref('silver_events') }} se
+    join {{ source('public', 'fact_events') }} fe on se.event_id = fe.event_id
+    where se.team_id is not null
+),
+
+base as (
     select
         team_id,
         count(*)                                              as total_actions,
@@ -9,11 +25,9 @@ with base as (
         count(*) filter (where event_type = 'Carry')         as total_carries,
         round(sum(coalesce(xt_value, 0))::numeric, 4)        as total_xt,
         -- avg() ignores NULLs; coalesce(xp_value, 0) would skew the average down
-        round(avg(xp_value)::numeric, 4)                      as avg_xp,
-        -- xg_value is non-NULL only for shots; sum() ignores NULLs naturally
-        round(sum(coalesce(xg_value, 0))::numeric, 4)         as total_xg
-    from {{ ref('stg_events') }}
-    where team_id is not null
+        round(avg(xp_value)::numeric, 4)                     as avg_xp,
+        round(sum(coalesce(xg_value, 0))::numeric, 4)        as total_xg
+    from events
     group by team_id
 )
 

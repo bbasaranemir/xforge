@@ -1,4 +1,18 @@
-with event_agg as (
+-- Per-match scoreline, action volumes, and xT/xG totals.
+-- Reads from silver_events (normalised 105×68 coords) and joins fact_events for ML values.
+
+with events as (
+    select
+        se.event_id,
+        se.match_id,
+        se.event_type,
+        fe.xt_value,
+        fe.xg_value
+    from {{ ref('silver_events') }} se
+    join {{ source('public', 'fact_events') }} fe on se.event_id = fe.event_id
+),
+
+event_agg as (
     select
         match_id,
         count(*)                                              as total_events,
@@ -7,9 +21,8 @@ with event_agg as (
         count(*) filter (where event_type = 'Pressure')      as total_pressures,
         round(sum(coalesce(xt_value, 0))::numeric, 4)        as total_xt,
         count(*) filter (where xt_value > 0.05)              as high_xt_actions,
-        -- xg_value is non-NULL only for shots; coalesce to 0 for clean aggregation
         round(sum(coalesce(xg_value, 0))::numeric, 4)        as total_xg
-    from {{ ref('stg_events') }}
+    from events
     group by match_id
 )
 
