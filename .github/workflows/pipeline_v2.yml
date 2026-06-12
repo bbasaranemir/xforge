@@ -17,6 +17,12 @@ on:
         default: "statsbomb"
         type: choice
         options: [statsbomb, opta]
+      ingest_season:
+        description: "Load full competition (43=WC2022) before running models — improves ML training data volume"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -72,6 +78,11 @@ jobs:
 
       - name: Init schema V2 migration
         run: psql -h localhost -U analytics -d football_db -f scripts/init/02_v2_migration.sql
+
+      # ── Bulk season ingestion (optional) ────────────────────────────────────
+      - name: Bulk ingest full competition
+        if: ${{ github.event.inputs.ingest_season == 'true' }}
+        run: python scripts/massive_ingestion.py --competitions ${{ env.COMPETITION_ID }}
 
       # ── Dart ingestion ──────────────────────────────────────────────────────
       - uses: docker/setup-buildx-action@v3
@@ -212,10 +223,16 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Ingest Season | ${{ github.event.inputs.ingest_season || 'false' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Match ID | $MATCH_ID |" >> $GITHUB_STEP_SUMMARY
           echo "| Competition ID | $COMPETITION_ID |" >> $GITHUB_STEP_SUMMARY
           echo "| Provider | $PROVIDER |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Ingestion Stats" >> $GITHUB_STEP_SUMMARY
+          psql -h localhost -U analytics -d football_db -c \
+            "SELECT competition_id, COUNT(*) AS matches_ingested, SUM(event_count) AS total_events FROM ingested_matches WHERE status='success' GROUP BY competition_id;" \
+            >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
           echo "" >> $GITHUB_STEP_SUMMARY
           psql -h localhost -U analytics -d football_db -c \
             "SELECT team_name, total_shots, total_xg, goals_scored, conversion_rate FROM mv_team_xg;" \

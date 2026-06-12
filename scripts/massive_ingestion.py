@@ -215,6 +215,8 @@ def flatten_events(
         .fillna(False)
         .astype(bool)
     )
+    df["provider"] = "statsbomb"
+    df["coord_system"] = "statsbomb_120x80"
     df["xt_value"] = None
     df["xp_value"] = None
     df["xg_value"] = None
@@ -236,6 +238,8 @@ def flatten_events(
             "end_location_y",
             "outcome",
             "under_pressure",
+            "provider",
+            "coord_system",
             "xt_value",
             "xp_value",
             "xg_value",
@@ -378,4 +382,16 @@ def run(competition_filter: Optional[list] = None) -> None:
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Bulk StatsBomb open-data ingestion")
+    parser.add_argument(
+        "--competitions",
+        nargs="*",
+        type=int,
+        default=None,
+        metavar="ID",
+        help="Competition IDs to ingest (default: all available)",
+    )
+    args = parser.parse_args()
+    run(competition_filter=args.competitions)
