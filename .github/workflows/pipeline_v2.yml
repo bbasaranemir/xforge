@@ -19,6 +19,7 @@ on:
         options: [statsbomb, opta]
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   MATCH_ID: ${{ github.event.inputs.match_id || '3869685' }}
   COMPETITION_ID: ${{ github.event.inputs.competition_id || '43' }}
   PROVIDER: ${{ github.event.inputs.provider || 'statsbomb' }}
