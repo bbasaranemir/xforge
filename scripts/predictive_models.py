@@ -10,8 +10,8 @@ Features per pass:
   - minute_bin                : match phase (0=first half, 1=second half, 2=extra time)
 
 Target:
-  - 1 if pass_outcome IS NULL (StatsBomb convention for successful pass)
-  - 0 otherwise (Incomplete, Out, Unknown, etc.)
+  - 1 if outcome == 'Unknown' (silver layer convention for successful pass)
+  - 0 otherwise (Incomplete, Out, etc.)
 
 Trained model is serialized with joblib and recorded in model_registry.
 Predictions are written to fact_events.xp_value.
@@ -26,7 +26,6 @@ import joblib
 import numpy as np
 import pandas as pd
 import psycopg2
-import psycopg2.extras
 from sklearn.metrics import log_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sqlalchemy import create_engine, text
@@ -35,16 +34,18 @@ from xgboost import XGBClassifier
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ.get('POSTGRES_HOST', 'postgres')}:{os.environ.get('POSTGRES_PORT', '5432')}"
-    f"/{os.environ['POSTGRES_DB']}"
-)
+_user = os.environ.get("POSTGRES_USER", "analytics")
+_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
+_host = os.environ.get("POSTGRES_HOST", "postgres")
+_db = os.environ.get("POSTGRES_DB", "football_db")
+DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 
-MODEL_PATH = "/opt/airflow/reports/xp_model.joblib"
-PITCH_X = 120.0
-PITCH_Y = 80.0
-GOAL_CENTER = (120.0, 40.0)
+# Model artifact stored alongside other pipeline outputs
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "xp_model.joblib")
+# V2: universal 105×68 metric pitch
+PITCH_X = 105.0
+PITCH_Y = 68.0
+GOAL_CENTER = (105.0, 34.0)
 TRAIN_SAMPLE = 300_000  # rows for training — plenty for a good AUC
 WRITE_CHUNK = (
     50_000  # rows per commit — 5x throughput; index on xp_value IS NULL required
@@ -59,9 +60,9 @@ def _conn_params() -> dict:
     return dict(
         host=os.environ.get("POSTGRES_HOST", "postgres"),
         port=int(os.environ.get("POSTGRES_PORT", 5432)),
-        dbname=os.environ["POSTGRES_DB"],
-        user=os.environ["POSTGRES_USER"],
-        password=os.environ["POSTGRES_PASSWORD"],
+        dbname=os.environ.get("POSTGRES_DB", "football_db"),
+        user=os.environ.get("POSTGRES_USER", "analytics"),
+        password=os.environ.get("POSTGRES_PASSWORD", "analytics"),
     )
 
 
@@ -78,13 +79,9 @@ PASS_COLS = [
     "minute",
 ]
 
-PASS_WHERE = """
-    event_type = 'Pass'
-    AND location_x     IS NOT NULL
-    AND location_y     IS NOT NULL
-    AND end_location_x IS NOT NULL
-    AND end_location_y IS NOT NULL
-"""
+# silver_passes already filters event_type='Pass' and non-null coordinates.
+# outcome is 'Unknown' for successful passes (silver coalesces NULL → 'Unknown').
+SILVER_PASSES = "analytics_silver.silver_passes"
 
 
 def fetch_passes_sample(engine) -> pd.DataFrame:
@@ -93,8 +90,7 @@ def fetch_passes_sample(engine) -> pd.DataFrame:
         SELECT event_id, location_x, location_y,
                end_location_x, end_location_y,
                outcome, under_pressure, minute
-        FROM fact_events
-        WHERE {PASS_WHERE}
+        FROM {SILVER_PASSES}
         ORDER BY RANDOM()
         LIMIT {TRAIN_SAMPLE}
     """)
@@ -113,9 +109,7 @@ def stream_passes_for_prediction(feature_cols: list, model):
         SELECT event_id, location_x, location_y,
                end_location_x, end_location_y,
                outcome, under_pressure, minute
-        FROM fact_events
-        WHERE {PASS_WHERE}
-          AND xp_value IS NULL
+        FROM {SILVER_PASSES}
     """)
     while True:
         rows = cur.fetchmany(WRITE_CHUNK)
@@ -161,8 +155,9 @@ def build_features(df: pd.DataFrame) -> tuple:
         df["minute"], bins=[-1, 45, 90, 999], labels=[0, 1, 2]
     ).astype(int)
 
-    # Target: 1 = successful pass (NULL outcome in StatsBomb)
-    df["target"] = df["outcome"].isna().astype(int)
+    # Target: 1 = successful pass.
+    # Silver coalesces NULL outcome → 'Unknown'; Opta successful passes also map to 'Unknown'.
+    df["target"] = (df["outcome"] == "Unknown").astype(int)
 
     feature_cols = [
         "start_x_n",
@@ -260,13 +255,16 @@ def write_xp_values_chunked(engine, model, feature_cols: list) -> None:
 def run() -> None:
     engine = get_engine()
 
-    # ── Early-exit: skip if model exists and all predictions are written ──────
+    # ── Early-exit: skip if model exists and all xP predictions are written ──
     if os.path.exists(MODEL_PATH):
         with engine.connect() as conn:
             remaining = conn.execute(
-                text(
-                    f"SELECT COUNT(*) FROM fact_events WHERE {PASS_WHERE} AND xp_value IS NULL"
-                )
+                text("""
+                    SELECT COUNT(*) FROM fact_events
+                    WHERE event_type = 'Pass'
+                      AND location_x IS NOT NULL AND end_location_x IS NOT NULL
+                      AND xp_value IS NULL
+                """)
             ).scalar()
         if remaining == 0:
             log.info("xP already complete (model exists, 0 rows remaining) — skipping.")

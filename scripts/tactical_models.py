@@ -22,11 +22,11 @@ from sqlalchemy import create_engine, text
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ.get('POSTGRES_HOST', 'postgres')}:{os.environ.get('POSTGRES_PORT', '5432')}"
-    f"/{os.environ['POSTGRES_DB']}"
-)
+_user = os.environ.get("POSTGRES_USER", "analytics")
+_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
+_host = os.environ.get("POSTGRES_HOST", "postgres")
+_db = os.environ.get("POSTGRES_DB", "football_db")
+DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 
 # Only Corner is a genuine set-piece delivery type detectable from StatsBomb open data.
 # Free kicks cannot be distinguished without the pass_type sub-field (not persisted).
@@ -47,32 +47,30 @@ def get_engine():
 
 def fetch_set_pieces(engine) -> pd.DataFrame:
     """
-    StatsBomb stores corner kicks as event_type='Pass' originating from the
-    corner-flag positions (pitch is 120×80; corners at x<3 or x>117, y<3 or y>77).
-    Free kicks cannot be distinguished without the pass_type sub-field (not persisted).
-
-    Shots are fetched separately for shot-map clustering (not classified as set pieces).
+    Reads from analytics_silver.silver_events (105×68 normalised coordinates).
+    Corner kicks originate from corner-flag positions; thresholds scaled from
+    StatsBomb 120×80 → 105×68: x<2.625 or x>102.375, y<2.55 or y>65.45.
+    Shots fetched separately for shot-map clustering.
     """
     q = text("""
         SELECT event_id, 'Corner' AS event_type,
                location_x, location_y,
                end_location_x, end_location_y, match_id, team_id
-        FROM fact_events
+        FROM analytics_silver.silver_events
         WHERE event_type = 'Pass'
           AND location_x IS NOT NULL AND location_y IS NOT NULL
           AND (
-              (location_x <  3  AND (location_y <  3  OR location_y > 77))
+              (location_x <  2.625  AND (location_y <  2.55 OR location_y > 65.45))
               OR
-              (location_x > 117 AND (location_y <  3  OR location_y > 77))
+              (location_x > 102.375 AND (location_y <  2.55 OR location_y > 65.45))
           )
 
         UNION ALL
 
-        -- Shot locations clustered separately for shot-map analysis (not a set piece)
         SELECT event_id, 'Shot' AS event_type,
                location_x, location_y,
                end_location_x, end_location_y, match_id, team_id
-        FROM fact_events
+        FROM analytics_silver.silver_events
         WHERE event_type = 'Shot'
           AND location_x IS NOT NULL AND location_y IS NOT NULL
     """)
@@ -157,7 +155,7 @@ def fetch_press_candidates(engine) -> pd.DataFrame:
     q = text("""
         SELECT event_id, match_id, team_id, event_type,
                minute, second
-        FROM fact_events
+        FROM analytics_silver.silver_events
         WHERE event_type IN ('Pressure', 'Interception', 'Tackle', 'Block', 'Ball Recovery')
         ORDER BY match_id, minute, second
     """)

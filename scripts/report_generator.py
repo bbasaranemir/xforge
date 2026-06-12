@@ -12,8 +12,9 @@ Output: /opt/airflow/reports/match_{match_id}.pdf
 
 import logging
 import os
+from pathlib import Path
 
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # MPLBACKEND=Agg set by caller for headless envs
 import numpy as np
 import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
@@ -23,13 +24,13 @@ from sqlalchemy import create_engine, text
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ.get('POSTGRES_HOST', 'postgres')}:{os.environ.get('POSTGRES_PORT', '5432')}"
-    f"/{os.environ['POSTGRES_DB']}"
-)
+_user = os.environ.get("POSTGRES_USER", "analytics")
+_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
+_host = os.environ.get("POSTGRES_HOST", "postgres")
+_db = os.environ.get("POSTGRES_DB", "football_db")
+DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 
-REPORT_DIR = "/opt/airflow/reports"
+REPORT_DIR = str(Path(__file__).parent.parent / "data")
 GRID_COLS = 16
 GRID_ROWS = 12
 

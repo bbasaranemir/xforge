@@ -149,6 +149,13 @@ jobs:
           dbt run  --select gold --profiles-dir . --target ci
           dbt test --select gold --profiles-dir . --target ci
 
+      # ── Marts layer (aggregated BI tables) ───────────────────────────────────
+      - name: dbt marts
+        working-directory: dbt_project
+        run: |
+          dbt run  --select marts --profiles-dir . --target ci
+          dbt test --select marts --profiles-dir . --target ci
+
       # ── BI outputs ────────────────────────────────────────────────────────────
       - name: Refresh materialized views
         run: python scripts/refresh_materialized_views.py
@@ -158,6 +165,20 @@ jobs:
           mkdir -p data
           python scripts/xml_generator.py
 
+      # ── ML extensions ─────────────────────────────────────────────────────────
+      - name: Compute xP model
+        run: python scripts/predictive_models.py
+
+      - name: Tactical analysis
+        run: python scripts/tactical_models.py
+
+      - name: Generate match report
+        env:
+          MPLBACKEND: Agg
+        run: |
+          mkdir -p data
+          python scripts/report_generator.py ${{ env.MATCH_ID }}
+
       # ── Artefacts ─────────────────────────────────────────────────────────────
       - name: Upload XML output
         uses: actions/upload-artifact@v4
@@ -165,6 +186,14 @@ jobs:
         with:
           name: sportscode-xml-match-${{ env.MATCH_ID }}
           path: data/*.xml
+          retention-days: 30
+
+      - name: Upload match report PDF
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: match-report-${{ env.MATCH_ID }}
+          path: data/match_*.pdf
           retention-days: 30
 
       - name: Upload dbt logs
@@ -190,4 +219,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           psql -h localhost -U analytics -d football_db -c \
             "SELECT team_name, total_shots, total_xg, goals_scored, conversion_rate FROM mv_team_xg;" \
+            >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### xP Model Registry" >> $GITHUB_STEP_SUMMARY
+          psql -h localhost -U analytics -d football_db -c \
+            "SELECT model_name, version, metrics, trained_at FROM model_registry ORDER BY trained_at DESC LIMIT 5;" \
+            >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Set-piece Clusters" >> $GITHUB_STEP_SUMMARY
+          psql -h localhost -U analytics -d football_db -c \
+            "SELECT event_type, cluster_label, center_x, center_y, member_count FROM set_piece_clusters ORDER BY event_type, cluster_label;" \
             >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
