@@ -125,6 +125,9 @@ def stream_passes_for_prediction(feature_cols: list, model):
 
 def build_features(df: pd.DataFrame) -> tuple:
     df = df.copy()
+    # psycopg2 server-side cursor returns NUMERIC as decimal.Decimal; cast to float.
+    for col in ("location_x", "location_y", "end_location_x", "end_location_y"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df["start_x_n"] = df["location_x"] / PITCH_X
     df["start_y_n"] = df["location_y"] / PITCH_Y
