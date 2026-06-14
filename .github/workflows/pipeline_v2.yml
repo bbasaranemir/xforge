@@ -20,9 +20,9 @@ on:
       ingest_season:
         description: "Load full competition (43=WC2022) before running models — improves ML training data volume"
         required: false
-        default: "false"
+        default: "true"
         type: choice
-        options: ["false", "true"]
+        options: ["true", "false"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
