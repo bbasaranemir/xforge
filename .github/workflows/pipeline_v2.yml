@@ -54,6 +54,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+          --shm-size 256m
 
     steps:
       - uses: actions/checkout@v4
