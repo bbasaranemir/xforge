@@ -18,11 +18,13 @@ normalised as (
         provider,
         coord_system,
 
-        -- Normalise all coordinates to 105×68 metre universal pitch
-        round({{ normalise_x('location_x', 'coord_system') }}::numeric, 3)     as location_x,
-        round({{ normalise_y('location_y', 'coord_system') }}::numeric, 3)     as location_y,
-        round({{ normalise_x('end_location_x', 'coord_system') }}::numeric, 3) as end_location_x,
-        round({{ normalise_y('end_location_y', 'coord_system') }}::numeric, 3) as end_location_y,
+        -- Normalise all coordinates to 105×68 metre universal pitch.
+        -- LEAST/GREATEST clamps values that fall fractionally outside the pitch boundary
+        -- (e.g. StatsBomb x=121 for a ball past the byline → 105.875 unclamped).
+        round(LEAST(GREATEST({{ normalise_x('location_x', 'coord_system') }}, 0.0), 105.0)::numeric, 3)     as location_x,
+        round(LEAST(GREATEST({{ normalise_y('location_y', 'coord_system') }}, 0.0),  68.0)::numeric, 3)     as location_y,
+        round(LEAST(GREATEST({{ normalise_x('end_location_x', 'coord_system') }}, 0.0), 105.0)::numeric, 3) as end_location_x,
+        round(LEAST(GREATEST({{ normalise_y('end_location_y', 'coord_system') }}, 0.0),  68.0)::numeric, 3) as end_location_y,
 
         coalesce(outcome, 'Unknown')        as outcome,
         coalesce(under_pressure, false)     as under_pressure,
