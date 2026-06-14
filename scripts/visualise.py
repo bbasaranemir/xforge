@@ -296,7 +296,7 @@ def plot_set_piece_clusters(engine) -> Path | None:
 def plot_player_xp(engine) -> Path | None:
     q = text("""
         SELECT player_name, team_name, avg_xp, total_passes, pass_completion_pct
-        FROM   analytics_marts.mart_player_metrics
+        FROM   analytics_analytics_marts.mart_player_metrics
         WHERE  avg_xp IS NOT NULL
           AND  total_passes >= 50
         ORDER  BY avg_xp DESC
@@ -350,19 +350,27 @@ def run() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     engine = get_engine()
 
-    results: dict[str, Path | None] = {
-        "xT Surface Heatmap":   plot_xt_surface(engine),
-        "Shot Map (xG)":        plot_shot_map(engine),
-        "Team xG vs Goals":     plot_team_xg(engine),
-        "Set-Piece Clusters":   plot_set_piece_clusters(engine),
-        "Player xP Ranking":    plot_player_xp(engine),
+    chart_fns = {
+        "xT Surface Heatmap": lambda: plot_xt_surface(engine),
+        "Shot Map (xG)":      lambda: plot_shot_map(engine),
+        "Team xG vs Goals":   lambda: plot_team_xg(engine),
+        "Set-Piece Clusters": lambda: plot_set_piece_clusters(engine),
+        "Player xP Ranking":  lambda: plot_player_xp(engine),
     }
+
+    results: dict[str, Path | None] = {}
+    for name, fn in chart_fns.items():
+        try:
+            results[name] = fn()
+        except Exception:
+            log.exception("Chart '%s' failed — continuing", name)
+            results[name] = None
 
     generated = [v for v in results.values() if v is not None]
     log.info("=" * 60)
     log.info("Visualisation complete: %d / %d charts generated", len(generated), len(results))
     for name, path in results.items():
-        log.info("  %-28s → %s", name, path or "SKIPPED (no data)")
+        log.info("  %-28s → %s", name, path or "FAILED/SKIPPED")
     log.info("=" * 60)
 
     if not generated:
