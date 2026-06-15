@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: bronze_events
+    description: >
+      Type-cast pass-through from fact_events. No coordinate changes, no business logic.
+      Provider and coord_system tags must be present and recognised — unknown providers
+      are rejected here before Silver normalisation runs.
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+
+      - name: match_id
+        tests: [not_null]
+
+      - name: event_type
+        tests: [not_null]
+
+      - name: provider
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['statsbomb', 'opta']
+
+      - name: coord_system
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['statsbomb_120x80', 'opta_100x100']

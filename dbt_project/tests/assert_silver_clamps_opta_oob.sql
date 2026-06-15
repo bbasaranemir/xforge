@@ -1,0 +1,33 @@
+-- Spatial gate test: Opta out-of-bounds raw coordinates.
+--
+-- Scenario: raw X=110, Y=105 — both exceed Opta's 100×100 pitch boundary.
+--   After normalise_x: 110 × (105/100) = 115.5  → LEAST clamp → 105.0
+--   After normalise_y: 105 × (68/100)  =  71.4  → LEAST clamp →  68.0
+--
+-- An empty result (0 rows) proves the macro + clamp hold.
+-- Any rows returned means the Silver normalisation or clamping logic is broken.
+
+with oob_raw as (
+    select
+        'opta_100x100'::varchar as coord_system,
+        110.0::float            as location_x,
+        105.0::float            as location_y
+),
+
+normalised as (
+    select
+        least(greatest(
+            {{ normalise_x('location_x', 'coord_system') }}, 0.0
+        ), 105.0) as location_x,
+        least(greatest(
+            {{ normalise_y('location_y', 'coord_system') }}, 0.0
+        ), 68.0)  as location_y
+    from oob_raw
+)
+
+select *
+from normalised
+where location_x < 0
+   or location_x > 105
+   or location_y < 0
+   or location_y > 68

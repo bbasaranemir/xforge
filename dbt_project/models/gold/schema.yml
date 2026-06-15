@@ -22,6 +22,18 @@ models:
     columns:
       - name: event_id
         tests: [unique, not_null]
+      - name: x_105
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 105
+              inclusive: true
+      - name: y_68
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 68
+              inclusive: true
 
   - name: gold_xt_grid
     description: "xT threat surface aggregated to 16×12 grid on 105×68 pitch"
