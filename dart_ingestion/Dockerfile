@@ -3,7 +3,7 @@ FROM dart:stable AS build
 WORKDIR /app
 COPY pubspec.* ./
 RUN dart pub get
-COPY . .
+COPY lib/ ./lib/
 RUN dart compile exe lib/main.dart -o /app/server
 
 # Stage 2: minimal Debian runtime — only the binary and SSL certs
