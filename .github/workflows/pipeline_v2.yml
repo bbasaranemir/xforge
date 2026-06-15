@@ -148,11 +148,17 @@ jobs:
           dbt test --select silver --profiles-dir . --target ci
 
       # ── ML models ────────────────────────────────────────────────────────────
+      # xG, xT and xP all read from silver and write back to fact_events.
+      # All three must run before dbt gold/marts so downstream models see
+      # populated ml values in the fact table.
       - name: Compute xG model
         run: python scripts/xg_model.py
 
       - name: Compute xT model
         run: python scripts/xt_model.py
+
+      - name: Compute xP model
+        run: python scripts/predictive_models.py
 
       # ── Gold layer ────────────────────────────────────────────────────────────
       - name: dbt gold
@@ -176,10 +182,6 @@ jobs:
         run: |
           mkdir -p data
           python scripts/xml_generator.py
-
-      # ── ML extensions ─────────────────────────────────────────────────────────
-      - name: Compute xP model
-        run: python scripts/predictive_models.py
 
       - name: Tactical analysis
         run: python scripts/tactical_models.py

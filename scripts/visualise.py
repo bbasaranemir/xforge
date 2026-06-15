@@ -6,7 +6,7 @@ Generates five PNG exports from the analytics database:
   2. Shot map with xG bubbles    (analytics_silver.silver_shots)
   3. Team xG vs goals bar chart  (mv_team_xg)
   4. Set-piece cluster centroids (set_piece_clusters)
-  5. Player xP ranking           (analytics_marts.mart_player_metrics)
+  5. Player xP ranking           (analytics_analytics_marts.mart_player_metrics)
 
 MPLBACKEND=Agg must be set by the caller for headless environments.
 """
