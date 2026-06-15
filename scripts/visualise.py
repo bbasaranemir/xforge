@@ -53,10 +53,13 @@ def _apply_dark_axes(ax) -> None:
 
 # ─── 1. xT Surface Heatmap ───────────────────────────────────────────────────
 
+
 def plot_xt_surface(engine) -> Path | None:
     with engine.connect() as conn:
         df = pd.read_sql(
-            text("SELECT grid_col, grid_row, xt_value FROM xt_surface ORDER BY grid_row, grid_col"),
+            text(
+                "SELECT grid_col, grid_row, xt_value FROM xt_surface ORDER BY grid_row, grid_col"
+            ),
             conn,
         )
 
@@ -70,8 +73,12 @@ def plot_xt_surface(engine) -> Path | None:
     ax.set_facecolor(_BG)
 
     pitch = Pitch(
-        pitch_type="custom", pitch_length=105, pitch_width=68,
-        pitch_color=_BG, line_color="white", line_zorder=2,
+        pitch_type="custom",
+        pitch_length=105,
+        pitch_width=68,
+        pitch_color=_BG,
+        line_color="white",
+        line_zorder=2,
     )
     pitch.draw(ax=ax)
 
@@ -85,8 +92,9 @@ def plot_xt_surface(engine) -> Path | None:
         zorder=1,
     )
 
-    sm = plt.cm.ScalarMappable(cmap="YlOrRd",
-                                norm=plt.Normalize(grid.min(), grid.max()))
+    sm = plt.cm.ScalarMappable(
+        cmap="YlOrRd", norm=plt.Normalize(grid.min(), grid.max())
+    )
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, fraction=0.025, pad=0.02)
     cbar.set_label("xT Value", color="white", fontsize=11)
@@ -95,7 +103,10 @@ def plot_xt_surface(engine) -> Path | None:
 
     ax.set_title(
         "Expected Threat (xT) Surface — 16×12 Grid | 105×68 m Universal Pitch",
-        color="white", fontsize=13, fontweight="bold", pad=12,
+        color="white",
+        fontsize=13,
+        fontweight="bold",
+        pad=12,
     )
     ax.axis("off")
 
@@ -108,14 +119,17 @@ def plot_xt_surface(engine) -> Path | None:
 
 # ─── 2. Shot Map with xG bubbles ─────────────────────────────────────────────
 
+
 def plot_shot_map(engine) -> Path | None:
-    q = text("""
+    q = text(
+        """
         SELECT ss.location_x, ss.location_y, ss.is_goal, fe.xg_value
         FROM   analytics_silver.silver_shots ss
         JOIN   fact_events fe ON ss.event_id = fe.event_id
         WHERE  fe.xg_value IS NOT NULL
         LIMIT  4000
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(q, conn)
 
@@ -128,15 +142,21 @@ def plot_shot_map(engine) -> Path | None:
     saves = df[df["is_goal"] == 0]
 
     pitch = VerticalPitch(
-        pitch_type="custom", pitch_length=105, pitch_width=68,
-        half=True, pitch_color=_BG, line_color="white",
-        goal_type="box", linewidth=1,
+        pitch_type="custom",
+        pitch_length=105,
+        pitch_width=68,
+        half=True,
+        pitch_color=_BG,
+        line_color="white",
+        goal_type="box",
+        linewidth=1,
     )
     fig, ax = pitch.draw(figsize=(8, 10), constrained_layout=True)
     fig.set_facecolor(_BG)
 
     sc = pitch.scatter(
-        saves["location_x"], saves["location_y"],
+        saves["location_x"],
+        saves["location_y"],
         s=saves["xg_value"] * 900 + 18,
         c=saves["xg_value"],
         cmap="Blues",
@@ -147,7 +167,8 @@ def plot_shot_map(engine) -> Path | None:
         ax=ax,
     )
     pitch.scatter(
-        goals["location_x"], goals["location_y"],
+        goals["location_x"],
+        goals["location_y"],
         s=goals["xg_value"] * 900 + 45,
         c=_ACCENT,
         alpha=0.9,
@@ -166,7 +187,10 @@ def plot_shot_map(engine) -> Path | None:
     ax.set_title(
         f"Shot Map  ({len(df):,} shots · {len(goals)} goals)\n"
         "Bubble size ∝ xG  |  ★ = Goal",
-        color="white", fontsize=12, fontweight="bold", pad=10,
+        color="white",
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
     )
 
     out = OUT_DIR / "shot_map_xg.png"
@@ -178,13 +202,16 @@ def plot_shot_map(engine) -> Path | None:
 
 # ─── 3. Team xG vs Goals ─────────────────────────────────────────────────────
 
+
 def plot_team_xg(engine) -> Path | None:
-    q = text("""
+    q = text(
+        """
         SELECT team_name, total_shots, total_xg, goals_scored, conversion_rate
         FROM   mv_team_xg
         ORDER  BY total_xg DESC
         LIMIT  20
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(q, conn)
 
@@ -202,15 +229,25 @@ def plot_team_xg(engine) -> Path | None:
 
     y = np.arange(len(df))
     h = 0.35
-    ax.barh(y + h / 2, df["total_xg"],     h, label="Total xG",      color="#4a90d9", alpha=0.85)
-    ax.barh(y - h / 2, df["goals_scored"], h, label="Goals Scored",   color=_ACCENT,  alpha=0.85)
+    ax.barh(y + h / 2, df["total_xg"], h, label="Total xG", color="#4a90d9", alpha=0.85)
+    ax.barh(
+        y - h / 2,
+        df["goals_scored"],
+        h,
+        label="Goals Scored",
+        color=_ACCENT,
+        alpha=0.85,
+    )
 
     ax.set_yticks(y)
     ax.set_yticklabels(df["team_name"], color="white", fontsize=8)
     ax.set_xlabel("Count", color="white")
     ax.set_title(
         "Team xG vs Goals Scored — Top 20 by Total xG",
-        color="white", fontsize=13, fontweight="bold", pad=12,
+        color="white",
+        fontsize=13,
+        fontweight="bold",
+        pad=12,
     )
     ax.legend(facecolor="#1e2d3d", labelcolor="white", framealpha=0.8)
 
@@ -223,12 +260,15 @@ def plot_team_xg(engine) -> Path | None:
 
 # ─── 4. Set-Piece Cluster Map ─────────────────────────────────────────────────
 
+
 def plot_set_piece_clusters(engine) -> Path | None:
-    q = text("""
+    q = text(
+        """
         SELECT event_type, cluster_label, center_x, center_y, member_count
         FROM   set_piece_clusters
         ORDER  BY event_type, cluster_label
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(q, conn)
 
@@ -244,11 +284,18 @@ def plot_set_piece_clusters(engine) -> Path | None:
     nrows = (len(types) + ncols - 1) // ncols
 
     fig, axes = plt.subplots(
-        nrows, ncols, figsize=(14, 7 * nrows), facecolor=_BG, squeeze=False,
+        nrows,
+        ncols,
+        figsize=(14, 7 * nrows),
+        facecolor=_BG,
+        squeeze=False,
     )
     fig.suptitle(
         "Set-Piece Delivery Clusters  (K-Means k=6 · 105×68 m pitch)",
-        color="white", fontsize=13, fontweight="bold", y=1.01,
+        color="white",
+        fontsize=13,
+        fontweight="bold",
+        y=1.01,
     )
 
     cluster_colors = ["#e8c842", "#4a90d9", "#e74c3c", "#2ecc71", "#9b59b6", "#e67e22"]
@@ -258,8 +305,12 @@ def plot_set_piece_clusters(engine) -> Path | None:
         ax = axes[row][col]
 
         pitch = Pitch(
-            pitch_type="custom", pitch_length=105, pitch_width=68,
-            pitch_color=_BG, line_color="white", linewidth=1,
+            pitch_type="custom",
+            pitch_length=105,
+            pitch_width=68,
+            pitch_color=_BG,
+            line_color="white",
+            linewidth=1,
         )
         pitch.draw(ax=ax)
 
@@ -267,17 +318,30 @@ def plot_set_piece_clusters(engine) -> Path | None:
         for _, r in sub.iterrows():
             c = cluster_colors[int(r["cluster_label"]) % len(cluster_colors)]
             sz = max(220, float(r["member_count"]) * 0.85)
-            ax.scatter(r["center_x"], r["center_y"], s=sz, c=c,
-                       alpha=0.88, edgecolors="white", linewidths=1.2, zorder=4)
+            ax.scatter(
+                r["center_x"],
+                r["center_y"],
+                s=sz,
+                c=c,
+                alpha=0.88,
+                edgecolors="white",
+                linewidths=1.2,
+                zorder=4,
+            )
             ax.annotate(
                 f"C{int(r['cluster_label'])}\n{int(r['member_count'])}",
                 (r["center_x"], r["center_y"]),
-                color="white", fontsize=7, ha="center", va="center",
-                fontweight="bold", zorder=5,
+                color="white",
+                fontsize=7,
+                ha="center",
+                va="center",
+                fontweight="bold",
+                zorder=5,
             )
 
-        ax.set_title(f"{etype} Clusters", color="white", fontsize=11,
-                     fontweight="bold", pad=8)
+        ax.set_title(
+            f"{etype} Clusters", color="white", fontsize=11, fontweight="bold", pad=8
+        )
         ax.axis("off")
 
     for idx in range(len(types), nrows * ncols):
@@ -293,20 +357,25 @@ def plot_set_piece_clusters(engine) -> Path | None:
 
 # ─── 5. Player xP Ranking ─────────────────────────────────────────────────────
 
+
 def plot_player_xp(engine) -> Path | None:
-    q = text("""
+    q = text(
+        """
         SELECT player_name, team_name, avg_xp, total_passes, pass_completion_pct
         FROM   analytics_analytics_marts.mart_player_metrics
         WHERE  avg_xp IS NOT NULL
           AND  total_passes >= 50
         ORDER  BY avg_xp DESC
         LIMIT  20
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(q, conn)
 
     if df.empty:
-        log.warning("mart_player_metrics has no qualifying rows — skipping player xP chart")
+        log.warning(
+            "mart_player_metrics has no qualifying rows — skipping player xP chart"
+        )
         return None
 
     df["avg_xp"] = pd.to_numeric(df["avg_xp"], errors="coerce")
@@ -326,7 +395,9 @@ def plot_player_xp(engine) -> Path | None:
             bar.get_width() + 0.002,
             bar.get_y() + bar.get_height() / 2,
             f"{val:.3f}",
-            va="center", color="white", fontsize=8,
+            va="center",
+            color="white",
+            fontsize=8,
         )
 
     ax.set_xlim(0, df["avg_xp"].max() * 1.12)
@@ -334,7 +405,10 @@ def plot_player_xp(engine) -> Path | None:
     ax.set_yticklabels(df["label"], color="white", fontsize=8)
     ax.set_title(
         "Top 20 Players by xP — XGBoost Pass Quality Model  (≥50 passes)",
-        color="white", fontsize=13, fontweight="bold", pad=12,
+        color="white",
+        fontsize=13,
+        fontweight="bold",
+        pad=12,
     )
 
     out = OUT_DIR / "player_xp_ranking.png"
@@ -346,16 +420,17 @@ def plot_player_xp(engine) -> Path | None:
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
+
 def run() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     engine = get_engine()
 
     chart_fns = {
         "xT Surface Heatmap": lambda: plot_xt_surface(engine),
-        "Shot Map (xG)":      lambda: plot_shot_map(engine),
-        "Team xG vs Goals":   lambda: plot_team_xg(engine),
+        "Shot Map (xG)": lambda: plot_shot_map(engine),
+        "Team xG vs Goals": lambda: plot_team_xg(engine),
         "Set-Piece Clusters": lambda: plot_set_piece_clusters(engine),
-        "Player xP Ranking":  lambda: plot_player_xp(engine),
+        "Player xP Ranking": lambda: plot_player_xp(engine),
     }
 
     results: dict[str, Path | None] = {}
@@ -368,13 +443,17 @@ def run() -> None:
 
     generated = [v for v in results.values() if v is not None]
     log.info("=" * 60)
-    log.info("Visualisation complete: %d / %d charts generated", len(generated), len(results))
+    log.info(
+        "Visualisation complete: %d / %d charts generated", len(generated), len(results)
+    )
     for name, path in results.items():
         log.info("  %-28s → %s", name, path or "FAILED/SKIPPED")
     log.info("=" * 60)
 
     if not generated:
-        log.error("No charts generated — check database connection and data availability")
+        log.error(
+            "No charts generated — check database connection and data availability"
+        )
         sys.exit(1)
 
 

@@ -33,7 +33,8 @@ def _to_grid(x: float, y: float) -> Tuple[int, int]:
 
 
 def fetch_actions(engine) -> pd.DataFrame:
-    query = text("""
+    query = text(
+        """
         SELECT
             event_id,
             event_type,
@@ -46,7 +47,8 @@ def fetch_actions(engine) -> pd.DataFrame:
         WHERE location_x IS NOT NULL
           AND location_y IS NOT NULL
           AND event_type IN ('Pass', 'Carry', 'Shot')
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(query, conn)
     log.info("Fetched %d actions for xT computation", len(df))
@@ -79,7 +81,11 @@ def build_matrices(df: pd.DataFrame):
         elif row["event_type"] in ("Pass", "Carry"):
             # Only successful moves update the transition matrix
             # StatsBomb: successful pass has no outcome label → SQL NULL → pandas NaN
-            outcome_ok = pd.isna(row["outcome"]) or row["outcome"] in ("Unknown", None, "")
+            outcome_ok = pd.isna(row["outcome"]) or row["outcome"] in (
+                "Unknown",
+                None,
+                "",
+            )
             if (
                 pd.notna(row["end_location_x"])
                 and pd.notna(row["end_location_y"])
@@ -162,14 +168,18 @@ def write_xt_values(engine, xt_df: pd.DataFrame):
 def write_xt_surface(engine, xt_surface: np.ndarray):
     """Persists the 16x12 xT surface to a dedicated table for Superset heatmap."""
     with engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text(
+                """
             CREATE TABLE IF NOT EXISTS xt_surface (
                 grid_col  INTEGER,
                 grid_row  INTEGER,
                 xt_value  FLOAT,
                 PRIMARY KEY (grid_col, grid_row)
             )
-        """))
+        """
+            )
+        )
         conn.execute(text("TRUNCATE xt_surface"))
         for row in range(GRID_ROWS):
             for col in range(GRID_COLS):
@@ -190,7 +200,9 @@ def run():
 
     log.info(
         "xT surface stats — min: %.4f, max: %.4f, mean: %.4f",
-        xt_surface.min(), xt_surface.max(), xt_surface.mean(),
+        xt_surface.min(),
+        xt_surface.max(),
+        xt_surface.mean(),
     )
 
     xt_df = compute_event_xt(df, xt_surface)

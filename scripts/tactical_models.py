@@ -52,7 +52,8 @@ def fetch_set_pieces(engine) -> pd.DataFrame:
     StatsBomb 120×80 → 105×68: x<2.625 or x>102.375, y<2.55 or y>65.45.
     Shots fetched separately for shot-map clustering.
     """
-    q = text("""
+    q = text(
+        """
         SELECT event_id, 'Corner' AS event_type,
                location_x, location_y,
                end_location_x, end_location_y, match_id, team_id
@@ -73,7 +74,8 @@ def fetch_set_pieces(engine) -> pd.DataFrame:
         FROM analytics_silver.silver_events
         WHERE event_type = 'Shot'
           AND location_x IS NOT NULL AND location_y IS NOT NULL
-    """)
+    """
+    )
     with engine.connect() as conn:
         return pd.read_sql(q, conn)
 
@@ -136,12 +138,14 @@ def save_clusters(engine, cluster_results: dict) -> None:
 
         if rows:
             conn.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO set_piece_clusters
                         (event_type, cluster_label, center_x, center_y, member_count)
                     VALUES
                         (:event_type, :cluster_label, :center_x, :center_y, :member_count)
-                """),
+                """
+                ),
                 rows,
             )
     log.info("Saved %d cluster centroids", len(rows))
@@ -152,13 +156,15 @@ def save_clusters(engine, cluster_results: dict) -> None:
 
 def fetch_press_candidates(engine) -> pd.DataFrame:
     """Fetch all defensive + recovery actions ordered by match and time."""
-    q = text("""
+    q = text(
+        """
         SELECT event_id, match_id, team_id, event_type,
                minute, second
         FROM analytics_silver.silver_events
         WHERE event_type IN ('Pressure', 'Interception', 'Tackle', 'Block', 'Ball Recovery')
         ORDER BY match_id, minute, second
-    """)
+    """
+    )
     with engine.connect() as conn:
         return pd.read_sql(q, conn)
 
@@ -194,10 +200,12 @@ def save_press_metadata(engine, triggers: pd.DataFrame) -> None:
     metrics = {"press_trigger_count": len(triggers)}
     with engine.begin() as conn:
         conn.execute(
-            text("""
+            text(
+                """
                 INSERT INTO model_registry (model_name, version, metrics)
                 VALUES ('press_trigger_detector', '1.0', :m)
-            """),
+            """
+            ),
             {"m": json.dumps(metrics)},
         )
     log.info("Press triggers detected: %d", len(triggers))

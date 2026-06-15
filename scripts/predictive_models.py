@@ -86,14 +86,16 @@ SILVER_PASSES = "analytics_silver.silver_passes"
 
 def fetch_passes_sample(engine) -> pd.DataFrame:
     """Load a stratified random sample for training (memory-safe)."""
-    q = text(f"""
+    q = text(
+        f"""
         SELECT event_id, location_x, location_y,
                end_location_x, end_location_y,
                outcome, under_pressure, minute
         FROM {SILVER_PASSES}
         ORDER BY RANDOM()
         LIMIT {TRAIN_SAMPLE}
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(q, conn)
     log.info("Training sample loaded: %d passes", len(df))
@@ -105,12 +107,14 @@ def stream_passes_for_prediction(feature_cols: list, model):
     conn = psycopg2.connect(**_conn_params())
     conn.autocommit = False
     cur = conn.cursor("xp_pred_cur")
-    cur.execute(f"""
+    cur.execute(
+        f"""
         SELECT event_id, location_x, location_y,
                end_location_x, end_location_y,
                outcome, under_pressure, minute
         FROM {SILVER_PASSES}
-    """)
+    """
+    )
     while True:
         rows = cur.fetchmany(WRITE_CHUNK)
         if not rows:
@@ -228,10 +232,12 @@ def save_model(engine, model, metrics: dict, feature_cols: list) -> None:
 
     with engine.begin() as conn:
         conn.execute(
-            text("""
+            text(
+                """
                 INSERT INTO model_registry (model_name, version, metrics, artifact_path)
                 VALUES ('xp_model', '1.0', :m, :path)
-            """),
+            """
+            ),
             {"m": json.dumps(metrics), "path": MODEL_PATH},
         )
     log.info("xP model saved: %s", MODEL_PATH)
@@ -262,12 +268,14 @@ def run() -> None:
     if os.path.exists(MODEL_PATH):
         with engine.connect() as conn:
             remaining = conn.execute(
-                text("""
+                text(
+                    """
                     SELECT COUNT(*) FROM fact_events
                     WHERE event_type = 'Pass'
                       AND location_x IS NOT NULL AND end_location_x IS NOT NULL
                       AND xp_value IS NULL
-                """)
+                """
+                )
             ).scalar()
         if remaining == 0:
             log.info("xP already complete (model exists, 0 rows remaining) — skipping.")

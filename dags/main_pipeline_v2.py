@@ -6,6 +6,7 @@ Dart ingestion → dbt Medallion (Bronze→Silver→Gold) → xG + xT models
 Silver test failure BLOCKS gold run — ML never trains on un-normalised data.
 xG and xT compute in parallel (independent reads from silver_shots / silver_events).
 """
+
 from __future__ import annotations
 
 import logging
@@ -71,7 +72,9 @@ def _run_dbt(command: list[str]) -> None:
     if result.stderr:
         log.warning(result.stderr)
     if result.returncode != 0:
-        raise RuntimeError(f"dbt {command[0]} {command[1:]} failed (code {result.returncode})")
+        raise RuntimeError(
+            f"dbt {command[0]} {command[1:]} failed (code {result.returncode})"
+        )
 
 
 # ─── Task callables ────────────────────────────────────────────────────────

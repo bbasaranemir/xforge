@@ -29,7 +29,8 @@ def get_engine():
 
 
 def fetch_top_xt_actions(engine, top_n: int = 15) -> pd.DataFrame:
-    query = text("""
+    query = text(
+        """
         SELECT
             se.event_id,
             se.match_id,
@@ -54,7 +55,8 @@ def fetch_top_xt_actions(engine, top_n: int = 15) -> pd.DataFrame:
           AND se.event_type IN ('Pass', 'Carry')
         ORDER BY fe.xt_value DESC
         LIMIT :top_n
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, params={"top_n": top_n})
     log.info("Fetched top %d xT actions", len(df))

@@ -117,7 +117,7 @@ def step_verify():
 
     engine = create_engine(
         f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-        f"@{os.environ.get('POSTGRES_HOST','postgres')}:5432/{os.environ['POSTGRES_DB']}",
+        f"@{os.environ.get('POSTGRES_HOST', 'postgres')}:5432/{os.environ['POSTGRES_DB']}",
         pool_pre_ping=True,
     )
 

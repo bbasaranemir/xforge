@@ -6,7 +6,6 @@ import pandas as pd
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import brier_score_loss, roc_auc_score
-from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 from sqlalchemy import create_engine, text
 
@@ -37,7 +36,8 @@ def get_engine():
 
 
 def fetch_shots(engine) -> pd.DataFrame:
-    query = text("""
+    query = text(
+        """
         SELECT
             s.event_id,
             s.distance_to_goal,
@@ -49,7 +49,8 @@ def fetch_shots(engine) -> pd.DataFrame:
         FROM analytics_silver.silver_shots s
         WHERE s.distance_to_goal IS NOT NULL
           AND s.shot_angle IS NOT NULL
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(query, conn)
     log.info("Fetched %d shots for xG model", len(df))
