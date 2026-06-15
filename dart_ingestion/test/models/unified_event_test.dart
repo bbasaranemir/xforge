@@ -39,23 +39,23 @@ void main() {
     test('returns all required database column keys', () {
       final map = _fullEvent().toInsertMap();
 
-      expect(map, containsKey('eventId'));
-      expect(map, containsKey('matchId'));
-      expect(map, containsKey('competitionId'));
-      expect(map, containsKey('teamId'));
-      expect(map, containsKey('playerId'));
-      expect(map, containsKey('eventType'));
-      expect(map, containsKey('minute'));
-      expect(map, containsKey('second'));
-      expect(map, containsKey('locationX'));
-      expect(map, containsKey('locationY'));
-      expect(map, containsKey('endLocationX'));
-      expect(map, containsKey('endLocationY'));
-      expect(map, containsKey('outcome'));
-      expect(map, containsKey('underPressure'));
-      expect(map, containsKey('provider'));
-      expect(map, containsKey('coordSystem'));
-      expect(map, containsKey('rawJson'));
+      expect(map, contains('eventId'));
+      expect(map, contains('matchId'));
+      expect(map, contains('competitionId'));
+      expect(map, contains('teamId'));
+      expect(map, contains('playerId'));
+      expect(map, contains('eventType'));
+      expect(map, contains('minute'));
+      expect(map, contains('second'));
+      expect(map, contains('locationX'));
+      expect(map, contains('locationY'));
+      expect(map, contains('endLocationX'));
+      expect(map, contains('endLocationY'));
+      expect(map, contains('outcome'));
+      expect(map, contains('underPressure'));
+      expect(map, contains('provider'));
+      expect(map, contains('coordSystem'));
+      expect(map, contains('rawJson'));
     });
 
     test('scalar values round-trip correctly', () {

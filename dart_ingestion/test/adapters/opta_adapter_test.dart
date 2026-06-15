@@ -210,7 +210,7 @@ void main() {
           .then((d) => File('${d.path}/corrupt.json'));
       await tmp.writeAsString('{not valid json{{');
 
-      expect(
+      await expectLater(
         () => _adapter().fetchEvents(
           matchId: 1,
           options: {'file_path': tmp.path},
@@ -218,7 +218,10 @@ void main() {
         throwsA(isA<FormatException>()),
       );
 
-      await tmp.delete();
+      // try/catch: on Windows the file handle may still be held briefly
+      try {
+        await tmp.delete();
+      } catch (_) {}
     });
 
     test('event with no EventId falls back to composite key', () async {
