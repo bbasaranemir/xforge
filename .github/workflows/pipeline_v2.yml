@@ -85,6 +85,17 @@ jobs:
         if: ${{ github.event.inputs.ingest_season == 'true' }}
         run: python scripts/massive_ingestion.py --competitions ${{ env.COMPETITION_ID }}
 
+      # ── Dart unit tests ─────────────────────────────────────────────────────
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Dart unit tests
+        working-directory: dart_ingestion
+        run: |
+          dart pub get
+          dart test --reporter expanded
+
       # ── Dart ingestion ──────────────────────────────────────────────────────
       - uses: docker/setup-buildx-action@v3
 

@@ -8,7 +8,6 @@ import '../models/unified_event.dart';
 /// Opta uses a 100×100 coordinate system; the Silver dbt layer normalises
 /// to 105×68 using the [coordSystem] tag on each row.
 class OptaAdapter implements DataAdapter {
-  // Opta F24 TypeId → canonical event name
   static const Map<int, String> _typeMap = {
     1: 'Pass',
     2: 'Offside Pass',
@@ -39,6 +38,10 @@ class OptaAdapter implements DataAdapter {
     74: 'Keeper Sweeper',
   };
 
+  final http.Client _client;
+
+  OptaAdapter({http.Client? client}) : _client = client ?? http.Client();
+
   @override
   String get providerName => 'opta';
 
@@ -52,12 +55,11 @@ class OptaAdapter implements DataAdapter {
   }) async {
     final Map<String, dynamic> data;
 
-    // Accept either a local file path or a remote URL via options
     if (options.containsKey('file_path')) {
       final content = await File(options['file_path'] as String).readAsString();
       data = jsonDecode(content) as Map<String, dynamic>;
     } else if (options.containsKey('url')) {
-      final response = await http.get(Uri.parse(options['url'] as String));
+      final response = await _client.get(Uri.parse(options['url'] as String));
       if (response.statusCode != 200) {
         throw Exception('Opta fetch failed: HTTP ${response.statusCode}');
       }
@@ -78,11 +80,9 @@ class OptaAdapter implements DataAdapter {
     final typeId = e['TypeId'] as int? ?? 0;
     final qualifiers = e['Qualifiers'] as List<dynamic>? ?? [];
 
-    // under_pressure: Opta QualifierId 72
     final underPressure =
         qualifiers.any((q) => (q as Map)['QualifierId'] == 72);
 
-    // Outcome: Opta uses 1 = success, 0 = failure
     final outcomeVal = e['Outcome'] as int? ?? 0;
     final outcome = outcomeVal == 1 ? 'Unknown' : 'Fail';
 
