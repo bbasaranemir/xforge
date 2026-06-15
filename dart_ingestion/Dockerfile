@@ -1,5 +1,5 @@
 # Stage 1: AOT compile to self-contained native binary (~10 MB, no Dart VM runtime)
-FROM dart:3.3 AS build
+FROM dart:stable AS build
 WORKDIR /app
 COPY pubspec.* ./
 RUN dart pub get

@@ -55,7 +55,7 @@ class StatsBombAdapter implements DataAdapter {
 
       // 5xx: server error — retry with linear backoff
       if (attempt < maxRetries) {
-        await Future.delayed(retryDelay * attempt);
+        await Future.delayed(retryDelay * attempt.toDouble());
       } else {
         throw Exception(
             'StatsBomb fetch failed for match $matchId: HTTP ${response.statusCode} '
