@@ -122,6 +122,12 @@ def run():
     engine = get_engine()
     df = fetch_shots(engine)
 
+    if len(df) == 0:
+        raise RuntimeError(
+            "No shots found in silver_shots — xG model cannot train on an empty dataset. "
+            "Ensure at least one match has been ingested and silver dbt models have run."
+        )
+
     if len(df) < 50:
         log.warning(
             "Only %d shots — xG reliability is low. "
@@ -132,6 +138,12 @@ def run():
     df, _le = engineer_features(df)
     X = df[FEATURE_COLS].values.astype(float)
     y = df["is_goal"].values.astype(int)
+
+    if y.sum() == 0:
+        raise RuntimeError(
+            "Training dataset contains no goals (all is_goal=0). "
+            "xG model requires positive examples — check silver_shots.is_goal column."
+        )
 
     model = train_xgboost(X, y)
     metrics = evaluate_model(model, X, y)
