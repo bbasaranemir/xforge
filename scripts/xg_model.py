@@ -1,22 +1,19 @@
 import logging
 import os
 
+import joblib
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.preprocessing import LabelEncoder
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+
+from db_utils import get_engine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
-
-_user = os.environ.get("POSTGRES_USER", "analytics")
-_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
-_host = os.environ.get("POSTGRES_HOST", "postgres")
-_db = os.environ.get("POSTGRES_DB", "football_db")
-DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 
 # Features must match silver_shots view columns
 FEATURE_COLS = [
@@ -30,9 +27,7 @@ FEATURE_COLS = [
 # AUC below this threshold indicates data quality problems — fail fast
 AUC_FLOOR = 0.55
 
-
-def get_engine():
-    return create_engine(DB_URL, pool_pre_ping=True)
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "xg_model.joblib")
 
 
 def fetch_shots(engine) -> pd.DataFrame:
@@ -109,13 +104,16 @@ def evaluate_model(model, X: np.ndarray, y: np.ndarray) -> dict:
 
 
 def write_xg_values(engine, event_ids: list, xg_values: np.ndarray):
+    rows = [
+        {"xg": round(float(xg), 6), "eid": eid}
+        for eid, xg in zip(event_ids, xg_values)
+    ]
     with engine.begin() as conn:
-        for eid, xg in zip(event_ids, xg_values):
-            conn.execute(
-                text("UPDATE fact_events SET xg_value = :xg WHERE event_id = :eid"),
-                {"xg": round(float(xg), 6), "eid": eid},
-            )
-    log.info("Updated xg_value for %d shot events", len(event_ids))
+        conn.execute(
+            text("UPDATE fact_events SET xg_value = :xg WHERE event_id = :eid"),
+            rows,
+        )
+    log.info("Updated xg_value for %d shot events", len(rows))
 
 
 def run():
@@ -147,6 +145,10 @@ def run():
 
     model = train_xgboost(X, y)
     metrics = evaluate_model(model, X, y)
+
+    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+    joblib.dump(model, MODEL_PATH)
+    log.info("xG model saved to %s", MODEL_PATH)
 
     if metrics["roc_auc"] < AUC_FLOOR:
         raise RuntimeError(

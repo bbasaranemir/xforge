@@ -127,7 +127,7 @@ services:
     command: >-
       /bin/sh -c "
         superset db upgrade &&
-        superset fab create-admin --username admin --firstname Admin --lastname User --email admin@superset.com --password admin123 &&
+        superset fab create-admin --username admin --firstname Admin --lastname User --email admin@superset.com --password ${SUPERSET_PASSWORD} &&
         superset init &&
         superset run -h 0.0.0.0 -p 8088
       "
@@ -167,7 +167,7 @@ services:
     mem_limit: 256m
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/pipeline-overview.json
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

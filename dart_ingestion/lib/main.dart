@@ -9,24 +9,54 @@ import 'adapters/adapter_interface.dart';
 import 'db/postgres_writer.dart';
 import 'models/unified_event.dart';
 
+/// Logs a message to stderr with an [xforge] prefix.
+/// Container runtimes (Docker, Kubernetes) collect stderr as structured logs.
+void _log(String message) => stderr.writeln('[xforge] $message');
+
+/// Optional Bearer token guard — protects /ingest.
+/// If API_TOKEN is not set in the environment, the middleware is bypassed so
+/// that CI runs and local development work without additional configuration.
+Middleware _bearerAuth() {
+  return (Handler inner) {
+    return (Request request) {
+      final token = Platform.environment['API_TOKEN'];
+      if (token == null || token.isEmpty) return inner(request);
+      final auth = request.headers['authorization'] ?? '';
+      if (auth != 'Bearer $token') {
+        return Response(
+          401,
+          body: '{"error":"Unauthorized"}',
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return inner(request);
+    };
+  };
+}
+
 void main() async {
   final router = Router();
 
-  router.get('/health', (_) => Response.ok('ok'));
+  // Health endpoint — always public (used by Docker/K8s liveness probes)
+  router.get('/health', (_) => Response.ok('{"status":"ok"}',
+      headers: {'content-type': 'application/json'}));
 
   router.post('/ingest', (Request request) async {
     final Map<String, dynamic> body;
     try {
       body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
     } catch (_) {
-      return Response(400, body: 'Invalid JSON body');
+      return Response(400, body: '{"error":"Invalid JSON body"}',
+          headers: {'content-type': 'application/json'});
     }
 
     final provider = body['provider'] as String?;
     final matchId = body['match_id'] as int?;
 
     if (provider == null || matchId == null) {
-      return Response(400, body: '{"error": "provider and match_id are required"}');
+      return Response(400,
+          body: '{"error":"provider and match_id are required"}',
+          headers: {'content-type': 'application/json'});
     }
 
     final DataAdapter adapter;
@@ -36,7 +66,9 @@ void main() async {
       case 'opta':
         adapter = OptaAdapter();
       default:
-        return Response(400, body: '{"error": "Unknown provider: $provider"}');
+        return Response(400,
+            body: '{"error":"Unknown provider: $provider"}',
+            headers: {'content-type': 'application/json'});
     }
 
     final List<dynamic> events;
@@ -46,7 +78,10 @@ void main() async {
         options: Map<String, dynamic>.from(body),
       );
     } catch (e) {
-      return Response(502, body: '{"error": "Fetch failed: $e"}');
+      _log('Fetch failed: match=$matchId provider=$provider error=$e');
+      return Response(502,
+          body: '{"error":"Fetch failed: $e"}',
+          headers: {'content-type': 'application/json'});
     }
 
     final writer = await PostgresWriter.connect(
@@ -64,17 +99,21 @@ void main() async {
       await writer.close();
     }
 
+    _log('match=$matchId provider=$provider written=$written');
+
     return Response.ok(
       jsonEncode({'provider': provider, 'match_id': matchId, 'written': written}),
       headers: {'content-type': 'application/json'},
     );
   });
 
+  // Bearer auth applied only to the ingest router, not the health endpoint
   final handler = const Pipeline()
       .addMiddleware(logRequests())
+      .addMiddleware(_bearerAuth())
       .addHandler(router.call);
 
   final port = int.parse(Platform.environment['PORT'] ?? '8090');
   final server = await shelf_io.serve(handler, '0.0.0.0', port);
-  print('xForge Dart ingestion service listening on port ${server.port}');
+  _log('Service started on port ${server.port}');
 }
