@@ -7,32 +7,12 @@ import 'adapters/statsbomb_adapter.dart';
 import 'adapters/opta_adapter.dart';
 import 'adapters/adapter_interface.dart';
 import 'db/postgres_writer.dart';
+import 'middleware/bearer_auth.dart';
 import 'models/unified_event.dart';
 
 /// Logs a message to stderr with an [xforge] prefix.
 /// Container runtimes (Docker, Kubernetes) collect stderr as structured logs.
 void _log(String message) => stderr.writeln('[xforge] $message');
-
-/// Optional Bearer token guard — protects /ingest.
-/// If API_TOKEN is not set in the environment, the middleware is bypassed so
-/// that CI runs and local development work without additional configuration.
-Middleware _bearerAuth() {
-  return (Handler inner) {
-    return (Request request) {
-      final token = Platform.environment['API_TOKEN'];
-      if (token == null || token.isEmpty) return inner(request);
-      final auth = request.headers['authorization'] ?? '';
-      if (auth != 'Bearer $token') {
-        return Response(
-          401,
-          body: '{"error":"Unauthorized"}',
-          headers: {'content-type': 'application/json'},
-        );
-      }
-      return inner(request);
-    };
-  };
-}
 
 void main() async {
   final router = Router();
@@ -80,7 +60,7 @@ void main() async {
     } catch (e) {
       _log('Fetch failed: match=$matchId provider=$provider error=$e');
       return Response(502,
-          body: '{"error":"Fetch failed: $e"}',
+          body: '{"error":"upstream fetch failed"}',
           headers: {'content-type': 'application/json'});
     }
 
@@ -110,7 +90,7 @@ void main() async {
   // Bearer auth applied only to the ingest router, not the health endpoint
   final handler = const Pipeline()
       .addMiddleware(logRequests())
-      .addMiddleware(_bearerAuth())
+      .addMiddleware(bearerAuth())
       .addHandler(router.call);
 
   final port = int.parse(Platform.environment['PORT'] ?? '8090');

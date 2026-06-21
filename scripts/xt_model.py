@@ -148,17 +148,22 @@ def compute_event_xt(df: pd.DataFrame, xt_surface: np.ndarray) -> pd.DataFrame:
 
 
 def write_xt_values(engine, xt_df: pd.DataFrame):
+    rows = [{"xt": row["xt_value"], "eid": row["event_id"]} for _, row in xt_df.iterrows()]
     with engine.begin() as conn:
-        for _, row in xt_df.iterrows():
-            conn.execute(
-                text("UPDATE fact_events SET xt_value = :xt WHERE event_id = :eid"),
-                {"xt": row["xt_value"], "eid": row["event_id"]},
-            )
+        conn.execute(
+            text("UPDATE fact_events SET xt_value = :xt WHERE event_id = :eid"),
+            rows,
+        )
     log.info("Updated xt_value for %d events", len(xt_df))
 
 
 def write_xt_surface(engine, xt_surface: np.ndarray):
     """Persists the 16x12 xT surface to a dedicated table for Superset heatmap."""
+    rows = [
+        {"col": col, "row": row, "xt": round(float(xt_surface[row * GRID_COLS + col]), 6)}
+        for row in range(GRID_ROWS)
+        for col in range(GRID_COLS)
+    ]
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -173,13 +178,10 @@ def write_xt_surface(engine, xt_surface: np.ndarray):
             )
         )
         conn.execute(text("TRUNCATE xt_surface"))
-        for row in range(GRID_ROWS):
-            for col in range(GRID_COLS):
-                cell = row * GRID_COLS + col
-                conn.execute(
-                    text("INSERT INTO xt_surface VALUES (:col, :row, :xt)"),
-                    {"col": col, "row": row, "xt": round(float(xt_surface[cell]), 6)},
-                )
+        conn.execute(
+            text("INSERT INTO xt_surface VALUES (:col, :row, :xt)"),
+            rows,
+        )
     log.info("xt_surface table written: %d cells", GRID_COLS * GRID_ROWS)
 
 

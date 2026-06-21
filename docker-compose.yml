@@ -56,8 +56,8 @@ services:
     image: dpage/pgadmin4:8.3
     platform: linux/amd64
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:?PGADMIN_EMAIL not set — copy .env.example to .env}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?PGADMIN_PASSWORD not set — copy .env.example to .env}
     ports:
       - "5050:80"
     mem_limit: 256m
@@ -78,12 +78,12 @@ services:
         airflow db init &&
         airflow db upgrade &&
         airflow users create \
-          --username ${AIRFLOW_USER:-admin} \
+          --username ${AIRFLOW_USER:?AIRFLOW_USER not set} \
           --firstname Admin \
           --lastname User \
           --role Admin \
-          --email ${AIRFLOW_EMAIL:-admin@example.com} \
-          --password ${AIRFLOW_PASSWORD:-admin}
+          --email ${AIRFLOW_EMAIL:?AIRFLOW_EMAIL not set} \
+          --password ${AIRFLOW_PASSWORD:?AIRFLOW_PASSWORD not set}
     restart: on-failure
 
   airflow-webserver:
