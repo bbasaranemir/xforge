@@ -8,7 +8,6 @@ from sqlalchemy import text
 
 from db_utils import get_engine
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
 GRID_COLS = 16

@@ -17,24 +17,15 @@ import uuid
 from typing import Optional
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from statsbombpy import sb
 
-log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+from db_utils import get_engine
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ.get('POSTGRES_HOST', 'postgres')}:{os.environ.get('POSTGRES_PORT', '5432')}"
-    f"/{os.environ['POSTGRES_DB']}"
-)
+log = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1000
 REQUEST_DELAY = 0.3  # seconds between sb.events() calls
-
-
-def get_engine():
-    return create_engine(DB_URL, pool_pre_ping=True, pool_size=2, max_overflow=2)
 
 
 # ─── Partition management ─────────────────────────────────────────────────────

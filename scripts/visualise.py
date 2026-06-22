@@ -22,25 +22,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from mplsoccer import Pitch, VerticalPitch
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+
+from db_utils import get_engine
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
-_user = os.environ.get("POSTGRES_USER", "analytics")
-_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
-_host = os.environ.get("POSTGRES_HOST", "postgres")
-_db = os.environ.get("POSTGRES_DB", "football_db")
-DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 
 OUT_DIR = Path(os.environ.get("VIZ_OUTPUT_DIR", "data/visualisations"))
 
 _BG = "#0d1b2a"
 _ACCENT = "#e8c842"
-
-
-def get_engine():
-    return create_engine(DB_URL, pool_pre_ping=True)
 
 
 def _apply_dark_axes(ax) -> None:

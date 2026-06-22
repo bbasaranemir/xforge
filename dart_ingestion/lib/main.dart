@@ -95,5 +95,9 @@ void main() async {
 
   final port = int.parse(Platform.environment['PORT'] ?? '8090');
   final server = await shelf_io.serve(handler, '0.0.0.0', port);
+  final apiToken = Platform.environment['API_TOKEN'];
+  if (apiToken == null || apiToken.isEmpty) {
+    _log('WARNING: API_TOKEN is not set — /ingest endpoint is unauthenticated. Set API_TOKEN in production.');
+  }
   _log('Service started on port ${server.port}');
 }

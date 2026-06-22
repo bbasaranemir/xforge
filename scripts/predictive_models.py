@@ -28,17 +28,12 @@ import pandas as pd
 import psycopg2
 from sklearn.metrics import log_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from xgboost import XGBClassifier
 
-log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+from db_utils import get_engine
 
-_user = os.environ.get("POSTGRES_USER", "analytics")
-_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
-_host = os.environ.get("POSTGRES_HOST", "postgres")
-_db = os.environ.get("POSTGRES_DB", "football_db")
-DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
+log = logging.getLogger(__name__)
 
 # Model artifact stored alongside other pipeline outputs
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "xp_model.joblib")
@@ -50,10 +45,6 @@ TRAIN_SAMPLE = 300_000  # rows for training — plenty for a good AUC
 WRITE_CHUNK = (
     50_000  # rows per commit — 5x throughput; index on xp_value IS NULL required
 )
-
-
-def get_engine():
-    return create_engine(DB_URL, pool_pre_ping=True)
 
 
 def _conn_params() -> dict:

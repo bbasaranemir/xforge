@@ -5,16 +5,12 @@ from pathlib import Path
 from xml.dom import minidom
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+from db_utils import get_engine
+
 log = logging.getLogger(__name__)
 
-_user = os.environ.get("POSTGRES_USER", "analytics")
-_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
-_host = os.environ.get("POSTGRES_HOST", "postgres")
-_db = os.environ.get("POSTGRES_DB", "football_db")
-DB_URL = f"postgresql+psycopg2://{_user}:{_pass}@{_host}:5432/{_db}"
 OUTPUT_DIR = Path(__file__).parent.parent / "data"
 
 # StatsBomb events do not carry a real video timestamp.
@@ -22,10 +18,6 @@ OUTPUT_DIR = Path(__file__).parent.parent / "data"
 # Hudl/SportsCode uses ms-based in/out points relative to clip start.
 CLIP_LEAD_MS = 3000  # pre-roll before action
 CLIP_LAG_MS = 5000  # post-roll after action
-
-
-def get_engine():
-    return create_engine(DB_URL, pool_pre_ping=True)
 
 
 def fetch_top_xt_actions(engine, top_n: int = 15) -> pd.DataFrame:

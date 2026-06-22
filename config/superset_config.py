@@ -8,8 +8,8 @@ SQLALCHEMY_DATABASE_URI = (
 
 WTF_CSRF_ENABLED = True
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = False  # set True behind HTTPS in production
-TALISMAN_ENABLED = False
+SESSION_COOKIE_SECURE = os.environ.get("SUPERSET_SESSION_COOKIE_SECURE", "false").lower() == "true"
+TALISMAN_ENABLED = os.environ.get("SUPERSET_TALISMAN_ENABLED", "false").lower() == "true"
 
 # Allow embedding in iframes for dashboard sharing
 HTTP_HEADERS = {}

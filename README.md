@@ -113,6 +113,31 @@ flowchart TD
 
 ---
 
+## API Reference
+
+### GET /health
+Returns `{"status":"ok"}` — used by Docker/K8s liveness probes. Always public.
+
+### POST /ingest
+Ingests events for a single match.
+
+**Request:**
+```json
+{"provider": "statsbomb", "match_id": 3869685}
+```
+Optional for Opta: `"file_path": "/data/match.json"` or `"url": "https://..."`
+
+**Response (200):**
+```json
+{"provider": "statsbomb", "match_id": 3869685, "written": 3401}
+```
+
+**Error responses:** 400 (invalid input), 401 (bad token), 502 (upstream fetch failed)
+
+**Authentication:** Bearer token via `Authorization: Bearer <API_TOKEN>` header. Bypassed when `API_TOKEN` env var is not set (local dev / CI only).
+
+---
+
 ## What V2 Adds Over V1
 
 | Capability | V1 | V2 |

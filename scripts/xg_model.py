@@ -12,7 +12,6 @@ from sqlalchemy import text
 
 from db_utils import get_engine
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
 # Features must match silver_shots view columns

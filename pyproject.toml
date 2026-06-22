@@ -1,3 +1,9 @@
+[tool.pytest.ini_options]
+# Coverage flags (--cov-fail-under=40) are enforced in CI via the test job command.
+# Running locally without pytest-cov installed still works cleanly.
+addopts = "-v"
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
