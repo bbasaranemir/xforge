@@ -1,0 +1,138 @@
+apiVersion: 1
+
+# Grafana Unified Alerting — xForge V2 pipeline alerts.
+# Provisioned automatically on container start (Grafana 9+).
+# Contact points and notification policies are defined below.
+
+contactPoints:
+  - orgId: 1
+    name: xforge-oncall
+    receivers:
+      - uid: xforge-email
+        type: email
+        settings:
+          addresses: ${ALERT_EMAIL:-kircaali036@gmail.com}
+          singleEmail: false
+
+policies:
+  - orgId: 1
+    receiver: xforge-oncall
+    group_by: [alertname, pipeline_stage]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: xforge-pipeline
+    folder: xForge Alerts
+    interval: 1m
+    rules:
+
+      # ── PostgreSQL health ────────────────────────────────────────────────────
+      - uid: pg-up
+        title: "PostgreSQL down"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: pg_up
+              intervalMs: 60000
+              maxDataPoints: 1
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+                  query: { params: [A] }
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: "PostgreSQL is unreachable — pipeline will fail on next run"
+        labels:
+          severity: critical
+          pipeline_stage: database
+
+      # ── xG model AUC guard ───────────────────────────────────────────────────
+      - uid: xg-auc-floor
+        title: "xG model AUC below floor"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: xforge_xg_model_auc
+              intervalMs: 60000
+              maxDataPoints: 1
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator: { type: lt, params: [0.55] }
+                  query: { params: [A] }
+        noDataState: NoData
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: "xG model AUC {{ $values.A.Value | printf \"%.3f\" }} — below 0.55 floor; predictions unreliable"
+        labels:
+          severity: warning
+          pipeline_stage: ml
+
+      # ── Dart ingestion failure ───────────────────────────────────────────────
+      - uid: dart-ingest-error
+        title: "Dart ingestion HTTP errors"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: increase(xforge_ingest_errors_total[5m])
+              intervalMs: 60000
+              maxDataPoints: 1
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  query: { params: [A] }
+        noDataState: NoData
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: "{{ $values.A.Value | printf \"%.0f\" }} ingestion error(s) in the last 5 minutes"
+        labels:
+          severity: warning
+          pipeline_stage: ingestion
+
+      # ── Silver coordinate test failures ─────────────────────────────────────
+      - uid: silver-coord-fail
+        title: "Silver layer coordinate tests failing"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: xforge_dbt_test_failures{layer="silver"}
+              intervalMs: 60000
+              maxDataPoints: 1
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  query: { params: [A] }
+        noDataState: NoData
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: "{{ $values.A.Value | printf \"%.0f\" }} Silver dbt test(s) failing — Gold layer blocked"
+        labels:
+          severity: critical
+          pipeline_stage: dbt_silver

@@ -83,6 +83,12 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      # ── Python unit tests ───────────────────────────────────────────────────
+      - name: Python unit tests
+        run: |
+          pip install pytest pytest-cov
+          pytest tests/ -v --cov=scripts --cov-report=term-missing --cov-fail-under=40
+
       # ── Database ────────────────────────────────────────────────────────────
       - name: Init schema V1
         run: psql -h localhost -U analytics -d football_db -f scripts/init/01_schema.sql

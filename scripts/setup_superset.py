@@ -24,15 +24,14 @@ import requests
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 SUPERSET_URL = os.environ.get("SUPERSET_URL", "http://superset:8088")
 ADMIN_USER = os.environ.get("SUPERSET_USER", "admin")
-ADMIN_PASS = os.environ.get("SUPERSET_PASSWORD", "admin123")
+ADMIN_PASS = os.environ.get("SUPERSET_PASSWORD", "admin")
 
 _pg_user = os.environ.get("POSTGRES_USER", "analytics")
-_pg_pass = os.environ.get("POSTGRES_PASSWORD", "analytics123")
+_pg_pass = os.environ.get("POSTGRES_PASSWORD", "analytics")
 _pg_host = os.environ.get("POSTGRES_HOST", "postgres")
 _pg_db = os.environ.get("FOOTBALL_DB", "football_analytics")
 

@@ -1,0 +1,14 @@
+# Default reviewer for all files
+* @kircaali036
+
+# ML models — require explicit review
+scripts/xg_model.py @kircaali036
+scripts/xt_model.py @kircaali036
+scripts/predictive_models.py @kircaali036
+scripts/tactical_models.py @kircaali036
+
+# dbt schema tests — coordinate system is critical
+dbt_project/models/silver/schema.yml @kircaali036
+
+# CI/CD pipeline changes
+.github/workflows/ @kircaali036

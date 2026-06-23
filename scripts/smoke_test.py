@@ -13,7 +13,6 @@ import os
 import sys
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -113,13 +112,11 @@ def step_verify():
     log.info("=" * 60)
 
     import pandas as pd
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import text
 
-    engine = create_engine(
-        f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-        f"@{os.environ.get('POSTGRES_HOST', 'postgres')}:5432/{os.environ['POSTGRES_DB']}",
-        pool_pre_ping=True,
-    )
+    from db_utils import get_engine
+
+    engine = get_engine()
 
     checks = {
         "Toplam event sayisi": "SELECT count(*) FROM fact_events",

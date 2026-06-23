@@ -11,7 +11,6 @@ import time
 import requests
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 SUPERSET_URL = os.environ.get("SUPERSET_URL", "http://superset:8088")
 ADMIN_USER = os.environ.get("SUPERSET_USER", "admin")

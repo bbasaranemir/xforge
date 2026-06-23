@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -17,10 +16,10 @@ PITCH_Y = 68.0  # V2: universal 105×68 metric pitch (was 80.0)
 ITERATIONS = 10
 
 
-def _to_grid(x: float, y: float) -> Tuple[int, int]:
-    col = int(min(x / (PITCH_X / GRID_COLS), GRID_COLS - 1))
-    row = int(min(y / (PITCH_Y / GRID_ROWS), GRID_ROWS - 1))
-    return col, row
+def _cells_from_xy(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    cols = np.minimum((x / (PITCH_X / GRID_COLS)).astype(int), GRID_COLS - 1)
+    rows = np.minimum((y / (PITCH_Y / GRID_ROWS)).astype(int), GRID_ROWS - 1)
+    return rows * GRID_COLS + cols
 
 
 def fetch_actions(engine) -> pd.DataFrame:
@@ -48,51 +47,36 @@ def fetch_actions(engine) -> pd.DataFrame:
 
 def build_matrices(df: pd.DataFrame):
     n = GRID_COLS * GRID_ROWS
-
-    # shot_count[cell] = shots taken from cell
-    # goal_count[cell] = goals scored from cell
-    # move_count[from_cell, to_cell] = successful moves between cells
-    # action_count[cell] = total on-ball actions from cell
-
     shot_count = np.zeros(n)
     goal_count = np.zeros(n)
     move_matrix = np.zeros((n, n))
     action_count = np.zeros(n)
 
-    for _, row in df.iterrows():
-        col, r = _to_grid(row["location_x"], row["location_y"])
-        cell = r * GRID_COLS + col
-        action_count[cell] += 1
+    cells = _cells_from_xy(df["location_x"].values, df["location_y"].values)
+    np.add.at(action_count, cells, 1)
 
-        if row["event_type"] == "Shot":
-            shot_count[cell] += 1
-            if row["outcome"] in ("Goal",):
-                goal_count[cell] += 1
+    shot_mask = df["event_type"].values == "Shot"
+    np.add.at(shot_count, cells[shot_mask], 1)
+    goal_mask = shot_mask & (df["outcome"].values == "Goal")
+    np.add.at(goal_count, cells[goal_mask], 1)
 
-        elif row["event_type"] in ("Pass", "Carry"):
-            # Only successful moves update the transition matrix
-            # StatsBomb: successful pass has no outcome label → SQL NULL → pandas NaN
-            outcome_ok = pd.isna(row["outcome"]) or row["outcome"] in (
-                "Unknown",
-                None,
-                "",
-            )
-            if (
-                pd.notna(row["end_location_x"])
-                and pd.notna(row["end_location_y"])
-                and outcome_ok
-            ):
-                ec, er = _to_grid(row["end_location_x"], row["end_location_y"])
-                end_cell = er * GRID_COLS + ec
-                move_matrix[cell, end_cell] += 1
+    # StatsBomb: successful pass outcome is NULL (pandas NaN); Opta uses "Unknown"/""
+    outcome_ok = (df["outcome"].isna() | df["outcome"].isin(["Unknown", ""])).values
+    move_mask = (
+        df["event_type"].isin(["Pass", "Carry"]).values
+        & outcome_ok
+        & df["end_location_x"].notna().values
+        & df["end_location_y"].notna().values
+    )
+    if move_mask.any():
+        end_cells = _cells_from_xy(
+            df.loc[move_mask, "end_location_x"].values,
+            df.loc[move_mask, "end_location_y"].values,
+        )
+        np.add.at(move_matrix, (cells[move_mask], end_cells), 1)
 
-    # Normalise shot probability per cell
     shot_prob = np.where(action_count > 0, shot_count / action_count, 0.0)
-
-    # Goal probability given shot
     goal_prob = np.where(shot_count > 0, goal_count / shot_count, 0.0)
-
-    # Transition probability matrix: P(end_cell | start_cell, move action taken)
     move_totals = move_matrix.sum(axis=1, keepdims=True)
     transition = np.where(move_totals > 0, move_matrix / move_totals, 0.0)
 
@@ -113,41 +97,39 @@ def solve_xt(shot_prob, goal_prob, transition) -> np.ndarray:
 
 
 def compute_event_xt(df: pd.DataFrame, xt_surface: np.ndarray) -> pd.DataFrame:
-    """
-    Per-event xT = xT[end_cell] - xT[start_cell] for successful passes/carries.
-    Shots get xT = shot_prob * goal_prob at that cell (already in surface).
-    """
-    records = []
+    """Per-event xT delta: end_cell − start_cell for passes/carries; surface value for shots."""
+    df = df.dropna(subset=["location_x", "location_y"]).copy()
 
-    for _, row in df.iterrows():
-        if pd.isna(row["location_x"]) or pd.isna(row["location_y"]):
-            continue
+    start_cells = _cells_from_xy(df["location_x"].values, df["location_y"].values)
 
-        col, r = _to_grid(row["location_x"], row["location_y"])
-        start_cell = r * GRID_COLS + col
-        start_xt = xt_surface[start_cell]
+    shot_mask = df["event_type"].values == "Shot"
+    outcome_ok = (df["outcome"].isna() | df["outcome"].isin(["Unknown", ""])).values
+    move_mask = (
+        df["event_type"].isin(["Pass", "Carry"]).values
+        & outcome_ok
+        & df["end_location_x"].notna().values
+        & df["end_location_y"].notna().values
+    )
 
-        if row["event_type"] == "Shot":
-            delta = float(xt_surface[start_cell])
-        elif (
-            row["event_type"] in ("Pass", "Carry")
-            and pd.notna(row["end_location_x"])
-            and pd.notna(row["end_location_y"])
-            and (pd.isna(row["outcome"]) or row["outcome"] in ("Unknown", None, ""))
-        ):
-            ec, er = _to_grid(row["end_location_x"], row["end_location_y"])
-            end_cell = er * GRID_COLS + ec
-            delta = float(xt_surface[end_cell] - start_xt)
-        else:
-            continue
+    deltas = np.full(len(df), np.nan)
+    deltas[shot_mask] = xt_surface[start_cells[shot_mask]]
 
-        records.append({"event_id": row["event_id"], "xt_value": round(delta, 6)})
+    if move_mask.any():
+        end_cells = _cells_from_xy(
+            df.loc[move_mask, "end_location_x"].values,
+            df.loc[move_mask, "end_location_y"].values,
+        )
+        deltas[move_mask] = xt_surface[end_cells] - xt_surface[start_cells[move_mask]]
 
-    return pd.DataFrame(records)
+    valid = ~np.isnan(deltas)
+    return pd.DataFrame({
+        "event_id": df["event_id"].values[valid],
+        "xt_value": np.round(deltas[valid], 6),
+    })
 
 
 def write_xt_values(engine, xt_df: pd.DataFrame):
-    rows = [{"xt": row["xt_value"], "eid": row["event_id"]} for _, row in xt_df.iterrows()]
+    rows = xt_df.rename(columns={"xt_value": "xt", "event_id": "eid"}).to_dict("records")
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE fact_events SET xt_value = :xt WHERE event_id = :eid"),

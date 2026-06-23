@@ -1,0 +1,58 @@
+# Production overlay — extends docker-compose.yml with hardened settings.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.production.yml up -d
+#
+# Required env vars (set in .env or CI secrets):
+#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+#   AIRFLOW_FERNET_KEY, AIRFLOW__CORE__SECRET_KEY
+#   API_TOKEN  (Dart ingestion bearer token)
+#   SUPERSET_SESSION_COOKIE_SECURE=true
+#   GRAFANA_ADMIN_PASSWORD
+#   LETSENCRYPT_EMAIL, DOMAIN  (if using Traefik TLS termination)
+
+services:
+  postgres:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    # Lock down port — only accessible within analytics_net in production
+    ports: []
+
+  dart_ingestion:
+    restart: unless-stopped
+    environment:
+      API_TOKEN: ${API_TOKEN:?API_TOKEN must be set in production}
+      DB_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    # Do not expose 8090 directly; route via reverse proxy
+    ports: []
+
+  airflow-webserver:
+    restart: unless-stopped
+    environment:
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__CORE__SECRET_KEY:?SECRET_KEY must be set}
+      AIRFLOW__WEBSERVER__SESSION_LIFETIME_DAYS: "1"
+
+  airflow-scheduler:
+    restart: unless-stopped
+
+  superset:
+    restart: unless-stopped
+    environment:
+      SUPERSET_SESSION_COOKIE_SECURE: "true"
+      SUPERSET_TALISMAN_ENABLED: "true"
+
+  grafana:
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      GF_SERVER_ROOT_URL: https://${DOMAIN:-localhost}/grafana/
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+
+  prometheus:
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
