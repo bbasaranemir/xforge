@@ -29,6 +29,13 @@ AUC_FLOOR = 0.55
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "xg_model.joblib")
 
 
+# sklearn 1.4 CyHalfBinomialLoss requires float64; XGBoost outputs float32.
+# Defined at module level so joblib/pickle can locate the class by name.
+class _XGBFloat64(xgb.XGBClassifier):
+    def predict_proba(self, X):
+        return super().predict_proba(X).astype(np.float64)
+
+
 def fetch_shots(engine) -> pd.DataFrame:
     query = text(
         """
@@ -64,13 +71,6 @@ def train_xgboost(X: np.ndarray, y: np.ndarray) -> CalibratedClassifierCV:
     Calibration ensures xG=0.3 means ~30% conversion probability,
     not just a relative ranking. This is a requirement for proper xG.
     """
-
-    # sklearn 1.4 CyHalfBinomialLoss requires float64; XGBoost outputs float32.
-    # Subclass to prevent a buffer-dtype mismatch ValueError during Platt fitting.
-    class _XGBFloat64(xgb.XGBClassifier):
-        def predict_proba(self, X):
-            return super().predict_proba(X).astype(np.float64)
-
     base_clf = _XGBFloat64(
         n_estimators=300,
         max_depth=4,
