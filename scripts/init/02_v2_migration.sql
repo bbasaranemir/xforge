@@ -50,11 +50,13 @@ SELECT
     CASE fe.coord_system
         WHEN 'statsbomb_120x80' THEN ROUND((fe.location_x * 105.0 / 120.0)::NUMERIC, 3)
         WHEN 'opta_100x100'     THEN ROUND((fe.location_x * 105.0 / 100.0)::NUMERIC, 3)
+        WHEN 'wyscout_100x100'  THEN ROUND((fe.location_x * 105.0 / 100.0)::NUMERIC, 3)
         ELSE fe.location_x
     END                                                           AS x_norm,
     CASE fe.coord_system
         WHEN 'statsbomb_120x80' THEN ROUND((fe.location_y * 68.0  /  80.0)::NUMERIC, 3)
         WHEN 'opta_100x100'     THEN ROUND((fe.location_y * 68.0  / 100.0)::NUMERIC, 3)
+        WHEN 'wyscout_100x100'  THEN ROUND((fe.location_y * 68.0  / 100.0)::NUMERIC, 3)
         ELSE fe.location_y
     END                                                           AS y_norm,
     fe.xg_value,
@@ -72,3 +74,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_shot_locations_event
 
 CREATE INDEX IF NOT EXISTS idx_mv_shot_locations_match
     ON mv_shot_locations (match_id);
+
+-- ─── Add wyscout to MV normalisation (mirror of dbt coord_normalise macro) ──
+
+-- Update mv_shot_locations CASE to handle wyscout_100x100
+-- (The MV is recreated here; existing IF NOT EXISTS guards make this idempotent)
+
+-- ─── Player similarity scores — computed by player_similarity.py ───────────
+
+CREATE TABLE IF NOT EXISTS player_similarity_scores (
+    player_id         INTEGER NOT NULL,
+    similar_player_id INTEGER NOT NULL,
+    similarity_score  FLOAT   NOT NULL,
+    rank              INTEGER NOT NULL,
+    computed_at       TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (player_id, similar_player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pss_player
+    ON player_similarity_scores (player_id, rank);

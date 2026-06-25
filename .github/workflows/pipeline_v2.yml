@@ -187,6 +187,9 @@ jobs:
       - name: Compute xP model
         run: python scripts/predictive_models.py
 
+      - name: Compute Player Similarity model
+        run: python scripts/player_similarity.py
+
       # ── Gold layer ────────────────────────────────────────────────────────────
       - name: dbt gold
         working-directory: dbt_project

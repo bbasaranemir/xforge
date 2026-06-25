@@ -64,3 +64,11 @@ models:
               min_value: 0
               max_value: 150
               inclusive: true
+
+  - name: silver_pass_links
+    description: "Pass events with recipient player ID extracted from raw_json (StatsBomb + Wyscout only)"
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: from_player_id
+        tests: [not_null]

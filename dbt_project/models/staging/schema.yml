@@ -16,11 +16,11 @@ sources:
           - name: provider
             tests:
               - accepted_values:
-                  values: ['statsbomb', 'opta']
+                  values: ['statsbomb', 'opta', 'wyscout']
           - name: coord_system
             tests:
               - accepted_values:
-                  values: ['statsbomb_120x80', 'opta_100x100']
+                  values: ['statsbomb_120x80', 'opta_100x100', 'wyscout_100x100']
 
       - name: dim_players
         description: "Player dimension"

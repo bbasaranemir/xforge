@@ -5,6 +5,7 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 import 'adapters/statsbomb_adapter.dart';
 import 'adapters/opta_adapter.dart';
+import 'adapters/wyscout_adapter.dart';
 import 'adapters/adapter_interface.dart';
 import 'db/postgres_writer.dart';
 import 'middleware/bearer_auth.dart';
@@ -45,6 +46,8 @@ void main() async {
         adapter = StatsBombAdapter();
       case 'opta':
         adapter = OptaAdapter();
+      case 'wyscout':
+        adapter = WyscoutAdapter();
       default:
         return Response(400,
             body: '{"error":"Unknown provider: $provider"}',

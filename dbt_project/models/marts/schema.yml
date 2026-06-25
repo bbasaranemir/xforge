@@ -21,3 +21,32 @@ models:
 
   - name: mart_competition_leaderboard
     description: "Cross-competition player xT leaderboard"
+
+  - name: mart_pressing_metrics
+    description: "PPDA (Passes Per Defensive Action) per team per match — pressing intensity metric"
+    columns:
+      - name: match_id
+        tests: [not_null]
+      - name: team_id
+        tests: [not_null]
+      - name: ppda
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+              inclusive: true
+
+  - name: mart_pass_network
+    description: "Pass network aggregation — from/to player pair counts per match"
+    columns:
+      - name: match_id
+        tests: [not_null]
+      - name: from_player_id
+        tests: [not_null]
+      - name: to_player_id
+        tests: [not_null]
+      - name: pass_count
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 2
+              inclusive: true
