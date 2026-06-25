@@ -8,7 +8,7 @@
 [![XGBoost](https://img.shields.io/badge/XGBoost-xP_AUC_0.897_%7C_xG_calibrated-FF6600)](https://xgboost.readthedocs.io/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e.svg)](LICENSE)
 
-> **End-to-end football analytics pipeline engineered for production.** Provider-agnostic ingestion via a Dart microservice (StatsBomb + Opta adapter pattern), a four-layer dbt medallion architecture with a universal 105×68 m coordinate system, calibrated XGBoost models for xG/xP, value-iteration xT, K-Means set-piece clustering, and a fully automated BI visualisation layer — all validated through GitHub Actions CI on 147 World Cup 2022 matches (524,457 events).
+> **End-to-end football analytics pipeline engineered for production.** Provider-agnostic ingestion via a Dart microservice (StatsBomb · Opta · Wyscout adapter pattern), a four-layer dbt medallion architecture with a universal 105×68 m coordinate system, calibrated XGBoost models for xG/xP, value-iteration xT, cosine-similarity recruitment model, K-Means set-piece clustering, and a fully automated BI visualisation layer — all validated through GitHub Actions CI on 147 World Cup 2022 matches (524,457 events).
 
 ---
 
@@ -163,6 +163,7 @@ Optional for Opta: `"file_path": "/data/match.json"` or `"url": "https://..."`
 | **xP Classifier** | XGBoost | Silver passes — start/end coords, distance, pressure | AUC **0.897** · log-loss 0.293 · 118,187 training passes |
 | **Set-piece Clustering** | K-Means k=6 | Corner + shot locations (105×68 m) | 12 cluster centroids (6 corner zones, 6 shot zones) |
 | **Press Trigger Detector** | Rule-based sequence | Ball recovery + 3 defensive actions / 5 s | 165 press triggers detected (WC 2022) |
+| **Player Similarity** | scikit-learn NearestNeighbors (cosine) | 12 aggregated features per player — shots, goals, xG, passes, completion rate, location, pressure | Top-10 most similar players per player; idempotent write-back to `player_similarity_scores` |
 
 **xP engineering note:** all three ML models read from the Silver layer and write `xp_value / xg_value / xt_value` back to `fact_events` before dbt Gold and Marts materialise — ensuring `mart_player_metrics.avg_xp` is populated on every run.
 
@@ -216,6 +217,7 @@ checkout
   → xG model    (XGBoost · calibrated)
   → xT model    (value iteration)
   → xP model    (XGBoost · writes xp_value to fact_events)
+  → player similarity model (cosine NearestNeighbors · writes player_similarity_scores)
   → dbt gold    (run + test)
   → dbt marts   (run + test — avg_xp now populated)
   → refresh materialized views
@@ -249,7 +251,8 @@ xforge/
 │       ├── adapters/
 │       │   ├── adapter_interface.dart
 │       │   ├── statsbomb_adapter.dart   # 120×80 → UnifiedEvent
-│       │   └── opta_adapter.dart        # 100×100 → UnifiedEvent
+│       │   ├── opta_adapter.dart        # 100×100 → UnifiedEvent
+│       │   └── wyscout_adapter.dart     # 100×100 → UnifiedEvent  (Wyscout v3)
 │       └── db/postgres_writer.dart      # Bulk INSERT ON CONFLICT DO NOTHING
 ├── dbt_project/
 │   ├── macros/
@@ -257,9 +260,11 @@ xforge/
 │   └── models/
 │       ├── bronze/                 # Type-cast pass-through + provider tests
 │       ├── silver/                 # 105×68 m normalisation + spatial range tests
+│       │                           # silver_pass_links — recipient extraction for pass network
 │       ├── gold/                   # Player / team aggregations
 │       └── marts/                  # mart_player_metrics · mart_team_summary
 │                                   # mart_match_summary · mart_competition_leaderboard
+│                                   # mart_pressing_metrics (PPDA) · mart_pass_network
 ├── docs/
 │   └── screenshots/                # CI-generated PNGs committed from latest artifact
 ├── scripts/
@@ -271,6 +276,7 @@ xforge/
 │   ├── xt_model.py                 # Value-iteration xT surface
 │   ├── predictive_models.py        # XGBoost xP + chunked prediction write-back
 │   ├── tactical_models.py          # K-Means clustering + press trigger detection
+│   ├── player_similarity.py        # Cosine NearestNeighbors recruitment model
 │   ├── visualise.py                # 5 PNG BI charts — mplsoccer + matplotlib
 │   ├── report_generator.py         # 5-page PDF per match
 │   ├── xml_generator.py            # SportsCode/Hudl XML — top-25 xT events
