@@ -87,7 +87,7 @@ jobs:
       - name: Python unit tests
         run: |
           pip install pytest pytest-cov
-          pytest tests/ -v --cov=scripts --cov-report=term-missing --cov-fail-under=40
+          pytest tests/ -v --cov=scripts --cov-report=term-missing --cov-fail-under=50
 
       # ── Database ────────────────────────────────────────────────────────────
       - name: Init schema V1

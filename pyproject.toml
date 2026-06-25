@@ -1,8 +1,27 @@
 [tool.pytest.ini_options]
-# Coverage flags (--cov-fail-under=40) are enforced in CI via the test job command.
+# Coverage flags are enforced in CI via the test job command.
 # Running locally without pytest-cov installed still works cleanly.
 addopts = "-v"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["scripts"]
+# Operational scripts require a live DB/Superset stack — excluded from unit coverage.
+omit = [
+    "scripts/smoke_test.py",
+    "scripts/setup_superset.py",
+    "scripts/superset_init.py",
+    "scripts/visualise.py",
+    "scripts/report_generator.py",
+    "scripts/refresh_materialized_views.py",
+    "scripts/logging_config.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__ == .__main__.:",
+    "pragma: no cover",
+]
 
 [tool.ruff]
 line-length = 100

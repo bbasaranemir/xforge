@@ -1,60 +1,66 @@
 """
-Unit tests for xT model pure functions.
+Unit tests for xt_model pure functions.
 
-DB-dependent functions (build_matrices, compute_and_write_xt) are skipped;
-only the pure numeric/grid functions are tested here.
+Imports directly from xt_model — DB-dependent functions (fetch_actions,
+write_xt_values, write_xt_surface, run) are skipped; pure numeric functions
+(_cells_from_xy, build_matrices, solve_xt, compute_event_xt) are tested fully.
 """
 
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+
+os.environ.setdefault("POSTGRES_USER", "analytics")
+os.environ.setdefault("POSTGRES_PASSWORD", "analytics_test")
+os.environ.setdefault("POSTGRES_DB", "football_db_test")
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+
 import numpy as np
+import pandas as pd
 import pytest
 
-GRID_COLS = 16
-GRID_ROWS = 12
-PITCH_X = 120.0
-PITCH_Y = 80.0
-ITERATIONS = 15
+from xt_model import (
+    GRID_COLS,
+    GRID_ROWS,
+    PITCH_X,
+    PITCH_Y,
+    _cells_from_xy,
+    solve_xt,
+    build_matrices,
+    compute_event_xt,
+)
 
 
-def _to_grid_vec(x, y):
-    cols = np.minimum((x / (PITCH_X / GRID_COLS)).astype(int), GRID_COLS - 1)
-    rows = np.minimum((y / (PITCH_Y / GRID_ROWS)).astype(int), GRID_ROWS - 1)
-    return cols, rows
-
-
-def solve_xt(shot_prob, goal_prob, transition):
-    xt = np.zeros(GRID_COLS * GRID_ROWS)
-    for _ in range(ITERATIONS):
-        xt = shot_prob * goal_prob + (1 - shot_prob) * (transition @ xt)
-    return xt
-
-
-class TestToGridVec:
-    def test_origin_maps_to_zero_cell(self):
-        c, r = _to_grid_vec(np.array([0.0]), np.array([0.0]))
-        assert c[0] == 0 and r[0] == 0
+class TestCellsFromXy:
+    def test_origin_maps_to_cell_zero(self):
+        cells = _cells_from_xy(np.array([0.0]), np.array([0.0]))
+        assert cells[0] == 0
 
     def test_pitch_centre_maps_to_middle(self):
-        c, r = _to_grid_vec(np.array([60.0]), np.array([40.0]))
-        assert c[0] == 8 and r[0] == 6
+        # centre ≈ (52.5, 34) → col=8, row=6 → cell 6*16+8=104
+        cells = _cells_from_xy(np.array([PITCH_X / 2]), np.array([PITCH_Y / 2]))
+        expected_col = 8
+        expected_row = 6
+        assert cells[0] == expected_row * GRID_COLS + expected_col
 
     def test_far_corner_clamps_to_max_cell(self):
-        c, r = _to_grid_vec(np.array([120.0]), np.array([80.0]))
-        assert c[0] == GRID_COLS - 1
-        assert r[0] == GRID_ROWS - 1
+        cells = _cells_from_xy(np.array([PITCH_X]), np.array([PITCH_Y]))
+        assert cells[0] == (GRID_ROWS - 1) * GRID_COLS + (GRID_COLS - 1)
 
     def test_output_within_bounds(self):
         rng = np.random.default_rng(42)
-        x = rng.uniform(0, 120, 1000)
-        y = rng.uniform(0, 80, 1000)
-        c, r = _to_grid_vec(x, y)
-        assert (c >= 0).all() and (c < GRID_COLS).all()
-        assert (r >= 0).all() and (r < GRID_ROWS).all()
+        x = rng.uniform(0, PITCH_X, 1000)
+        y = rng.uniform(0, PITCH_Y, 1000)
+        cells = _cells_from_xy(x, y)
+        assert (cells >= 0).all()
+        assert (cells < GRID_COLS * GRID_ROWS).all()
 
     def test_vectorised_batch(self):
-        xs = np.array([0.0, 60.0, 119.9])
-        ys = np.array([0.0, 40.0, 79.9])
-        c, r = _to_grid_vec(xs, ys)
-        assert len(c) == 3 and len(r) == 3
+        xs = np.array([0.0, PITCH_X / 2, PITCH_X - 0.1])
+        ys = np.array([0.0, PITCH_Y / 2, PITCH_Y - 0.1])
+        cells = _cells_from_xy(xs, ys)
+        assert len(cells) == 3
 
 
 class TestSolveXt:
@@ -64,8 +70,7 @@ class TestSolveXt:
         shot_prob = rng.uniform(0, 0.15, n)
         goal_prob = rng.uniform(0, 0.4, n)
         raw = rng.uniform(0, 1, (n, n))
-        row_sums = raw.sum(axis=1, keepdims=True)
-        transition = raw / row_sums
+        transition = raw / raw.sum(axis=1, keepdims=True)
         return shot_prob, goal_prob, transition
 
     def test_output_shape(self):
@@ -103,3 +108,82 @@ class TestSolveXt:
         xt1 = solve_xt(sp, gp, tr)
         xt2 = solve_xt(sp, gp, tr)
         np.testing.assert_array_equal(xt1, xt2)
+
+
+class TestBuildMatrices:
+    def _make_df(self):
+        return pd.DataFrame({
+            "event_type":     ["Shot", "Pass", "Carry", "Shot"],
+            "location_x":     [100.0,  30.0,   60.0,   95.0],
+            "location_y":     [34.0,   20.0,   34.0,   40.0],
+            "end_location_x": [None,   60.0,   80.0,   None],
+            "end_location_y": [None,   34.0,   34.0,   None],
+            "outcome":        ["Goal", None,   None,  "Saved"],
+        })
+
+    def test_returns_three_arrays(self):
+        sp, gp, tr = build_matrices(self._make_df())
+        assert sp.shape == (GRID_COLS * GRID_ROWS,)
+        assert gp.shape == (GRID_COLS * GRID_ROWS,)
+        assert tr.shape == (GRID_COLS * GRID_ROWS, GRID_COLS * GRID_ROWS)
+
+    def test_shot_prob_between_zero_and_one(self):
+        sp, _, _ = build_matrices(self._make_df())
+        assert (sp >= 0).all() and (sp <= 1).all()
+
+    def test_transition_rows_sum_to_one_or_zero(self):
+        _, _, tr = build_matrices(self._make_df())
+        row_sums = tr.sum(axis=1)
+        assert np.all((np.isclose(row_sums, 1.0) | np.isclose(row_sums, 0.0)))
+
+    def test_empty_df_returns_zero_arrays(self):
+        empty = pd.DataFrame(
+            columns=["event_type", "location_x", "location_y",
+                     "end_location_x", "end_location_y", "outcome"]
+        ).astype({"location_x": float, "location_y": float})
+        sp, gp, tr = build_matrices(empty)
+        assert sp.sum() == 0.0
+        assert gp.sum() == 0.0
+
+
+class TestComputeEventXt:
+    def _surface(self):
+        n = GRID_COLS * GRID_ROWS
+        rng = np.random.default_rng(0)
+        return rng.uniform(0, 0.3, n)
+
+    def _make_df(self):
+        return pd.DataFrame({
+            "event_id":       ["a", "b", "c"],
+            "event_type":     ["Shot", "Pass", "Carry"],
+            "location_x":     [100.0, 30.0, 60.0],
+            "location_y":     [34.0,  20.0, 34.0],
+            "end_location_x": [None,  60.0, 80.0],
+            "end_location_y": [None,  34.0, 34.0],
+            "outcome":        ["Saved", None, None],
+        })
+
+    def test_output_has_event_id_and_xt_value(self):
+        result = compute_event_xt(self._make_df(), self._surface())
+        assert "event_id" in result.columns
+        assert "xt_value" in result.columns
+
+    def test_shot_included(self):
+        result = compute_event_xt(self._make_df(), self._surface())
+        assert "a" in result["event_id"].values
+
+    def test_successful_pass_included(self):
+        result = compute_event_xt(self._make_df(), self._surface())
+        assert "b" in result["event_id"].values
+
+    def test_xt_values_are_floats(self):
+        result = compute_event_xt(self._make_df(), self._surface())
+        assert result["xt_value"].dtype == float
+
+    def test_empty_df_returns_empty(self):
+        empty = pd.DataFrame(
+            columns=["event_id", "event_type", "location_x", "location_y",
+                     "end_location_x", "end_location_y", "outcome"]
+        ).astype({"location_x": float, "location_y": float})
+        result = compute_event_xt(empty, self._surface())
+        assert len(result) == 0
