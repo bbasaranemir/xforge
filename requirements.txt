@@ -4,7 +4,7 @@
 statsbombpy==1.18.0
 pandas==2.1.4
 numpy==1.26.3
-sqlalchemy==2.0.25
+sqlalchemy==2.0.51
 psycopg2-binary==2.9.9
 dbt-postgres==1.7.4
 protobuf>=4.0.0,<5.0.0
