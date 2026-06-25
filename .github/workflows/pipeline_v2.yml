@@ -231,7 +231,7 @@ jobs:
 
       # ── Artefacts ─────────────────────────────────────────────────────────────
       - name: Upload XML output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: sportscode-xml-match-${{ env.MATCH_ID }}
@@ -239,7 +239,7 @@ jobs:
           retention-days: 30
 
       - name: Upload match report PDF
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: match-report-${{ env.MATCH_ID }}
@@ -247,7 +247,7 @@ jobs:
           retention-days: 30
 
       - name: Upload analytics visualisations
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: analytics-visualisations-${{ github.run_id }}
@@ -255,7 +255,7 @@ jobs:
           retention-days: 90
 
       - name: Upload dbt logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: dbt-logs
