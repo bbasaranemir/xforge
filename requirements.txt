@@ -12,7 +12,7 @@ scikit-learn==1.4.0
 xgboost==2.0.3
 scipy==1.12.0
 mplsoccer==1.2.4
-matplotlib==3.8.2
+matplotlib==3.11.0
 requests==2.31.0
 joblib==1.3.2
 # apache-airflow-providers-docker is provided by the Airflow Docker image at runtime.
