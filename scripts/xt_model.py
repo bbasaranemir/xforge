@@ -122,14 +122,18 @@ def compute_event_xt(df: pd.DataFrame, xt_surface: np.ndarray) -> pd.DataFrame:
         deltas[move_mask] = xt_surface[end_cells] - xt_surface[start_cells[move_mask]]
 
     valid = ~np.isnan(deltas)
-    return pd.DataFrame({
-        "event_id": df["event_id"].values[valid],
-        "xt_value": np.round(deltas[valid], 6),
-    })
+    return pd.DataFrame(
+        {
+            "event_id": df["event_id"].values[valid],
+            "xt_value": np.round(deltas[valid], 6),
+        }
+    )
 
 
 def write_xt_values(engine, xt_df: pd.DataFrame):
-    rows = xt_df.rename(columns={"xt_value": "xt", "event_id": "eid"}).to_dict("records")
+    rows = xt_df.rename(columns={"xt_value": "xt", "event_id": "eid"}).to_dict(
+        "records"
+    )
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE fact_events SET xt_value = :xt WHERE event_id = :eid"),
@@ -141,7 +145,11 @@ def write_xt_values(engine, xt_df: pd.DataFrame):
 def write_xt_surface(engine, xt_surface: np.ndarray):
     """Persists the 16x12 xT surface to a dedicated table for Superset heatmap."""
     rows = [
-        {"col": col, "row": row, "xt": round(float(xt_surface[row * GRID_COLS + col]), 6)}
+        {
+            "col": col,
+            "row": row,
+            "xt": round(float(xt_surface[row * GRID_COLS + col]), 6),
+        }
         for row in range(GRID_ROWS)
         for col in range(GRID_COLS)
     ]

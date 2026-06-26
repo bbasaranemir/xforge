@@ -104,8 +104,7 @@ def evaluate_model(model, X: np.ndarray, y: np.ndarray) -> dict:
 
 def write_xg_values(engine, event_ids: list, xg_values: np.ndarray):
     rows = [
-        {"xg": round(float(xg), 6), "eid": eid}
-        for eid, xg in zip(event_ids, xg_values)
+        {"xg": round(float(xg), 6), "eid": eid} for eid, xg in zip(event_ids, xg_values)
     ]
     with engine.begin() as conn:
         conn.execute(

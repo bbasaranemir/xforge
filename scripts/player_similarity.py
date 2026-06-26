@@ -41,7 +41,8 @@ FEATURE_COLS = [
 
 
 def fetch_player_features(engine) -> pd.DataFrame:
-    query = text("""
+    query = text(
+        """
         WITH shot_agg AS (
             SELECT
                 s.player_id,
@@ -101,7 +102,8 @@ def fetch_player_features(engine) -> pd.DataFrame:
         LEFT JOIN xg_agg   xa ON dp.player_id = xa.player_id
         WHERE pa.matches_played >= :min_matches
         ORDER BY dp.player_id
-    """)
+    """
+    )
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, params={"min_matches": MIN_MATCHES})
     log.info("Fetched features for %d players (min_matches=%d)", len(df), MIN_MATCHES)
@@ -154,7 +156,8 @@ def compute_similarity_rows(
 def write_similarity_scores(engine, rows: list[dict]) -> None:
     with engine.begin() as conn:
         conn.execute(
-            text("""
+            text(
+                """
                 INSERT INTO player_similarity_scores
                     (player_id, similar_player_id, similarity_score, rank)
                 VALUES (:pid, :sid, :score, :rank)
@@ -162,7 +165,8 @@ def write_similarity_scores(engine, rows: list[dict]) -> None:
                     SET similarity_score = EXCLUDED.similarity_score,
                         rank             = EXCLUDED.rank,
                         computed_at      = NOW()
-            """),
+            """
+            ),
             rows,
         )
     log.info("Upserted %d similarity score rows", len(rows))
@@ -172,7 +176,9 @@ def save_model_artifact(
     engine, model: NearestNeighbors, scaler: StandardScaler, n_players: int
 ) -> None:
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    joblib.dump({"model": model, "scaler": scaler, "features": FEATURE_COLS}, MODEL_PATH)
+    joblib.dump(
+        {"model": model, "scaler": scaler, "features": FEATURE_COLS}, MODEL_PATH
+    )
     log.info("Player similarity model saved to %s", MODEL_PATH)
 
     metrics = {
@@ -183,10 +189,12 @@ def save_model_artifact(
     }
     with engine.begin() as conn:
         conn.execute(
-            text("""
+            text(
+                """
                 INSERT INTO model_registry (model_name, version, metrics, artifact_path)
                 VALUES ('player_similarity', '1.0', :m, :path)
-            """),
+            """
+            ),
             {"m": json.dumps(metrics), "path": MODEL_PATH},
         )
     log.info("Player similarity model registered: %s", metrics)

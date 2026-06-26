@@ -1,0 +1,40 @@
+version: 2
+
+sources:
+  - name: public
+    description: >
+      Raw tables written directly by Python scripts (tactical_models.py,
+      player_similarity.py) and the Dart ingestion service. Not managed
+      by dbt — registered here so marts can reference them via source().
+    schema: public
+    tables:
+      - name: fact_events
+        description: Bronze event rows written by the Dart ingestion service.
+
+      - name: dim_players
+        description: Player dimension — populated by ingestion.
+
+      - name: dim_teams
+        description: Team dimension — populated by ingestion.
+
+      - name: set_piece_clusters
+        description: >
+          K-Means cluster centroids for corner and shot locations.
+          Written by scripts/tactical_models.py (k=6 per event type).
+        columns:
+          - name: event_type
+            tests: [not_null]
+          - name: cluster_label
+            tests: [not_null]
+
+      - name: player_similarity_scores
+        description: >
+          Top-10 cosine-similarity scores per player across 12 aggregated
+          features. Written by scripts/player_similarity.py.
+        columns:
+          - name: player_id
+            tests: [not_null]
+          - name: similar_player_id
+            tests: [not_null]
+          - name: similarity_score
+            tests: [not_null]
