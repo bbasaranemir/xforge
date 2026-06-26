@@ -1,4 +1,4 @@
-# xForge V2 — Provider-Agnostic Football Analytics Pipeline
+# xForge V3 — Provider-Agnostic Football Analytics Pipeline
 
 [![V2 Pipeline](https://github.com/bbasaranemir/xforge/actions/workflows/pipeline_v2.yml/badge.svg)](https://github.com/bbasaranemir/xforge/actions/workflows/pipeline_v2.yml)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -35,12 +35,13 @@ Five portfolio-grade charts are generated automatically on every CI run and uplo
 ## Architecture
 
 ```
-StatsBomb Open Data / Opta F24
+StatsBomb Open Data / Opta F24 / Wyscout v3
          │
          ▼
  Dart Ingestion Service          HTTP :8090 · Adapter Pattern
  ├── StatsBombAdapter            120×80 → UnifiedEvent
- └── OptaAdapter                 100×100 → UnifiedEvent
+ ├── OptaAdapter                 100×100 → UnifiedEvent
+ └── WyscoutAdapter              100×100 → UnifiedEvent
          │
          ▼
   PostgreSQL 15 · fact_events    LIST-partitioned by competition_id
@@ -49,13 +50,17 @@ StatsBomb Open Data / Opta F24
  dbt Medallion Pipeline
  ├── Bronze                      Type-cast pass-through, provider tests
  ├── Silver                      105×68 m normalisation, spatial range tests
+ │   └── silver_pass_links       Recipient extraction for pass network
  ├── Gold                        Player / team aggregations with ML values
  └── Marts                       BI-ready tables — player metrics, leaderboards
+     ├── mart_pressing_metrics   PPDA per team per match
+     └── mart_pass_network       Player-to-player pass pairs
          │
          ├── ML Models (run before Gold/Marts — write back to fact_events)
          │   ├── xG Model        XGBoost · calibrated goal probability per shot
          │   ├── xT Model        Value iteration · 16×12 grid · 192 cells
-         │   └── xP Model        XGBoost · pass completion probability (AUC 0.897)
+         │   ├── xP Model        XGBoost · pass completion probability (AUC 0.897)
+         │   └── Player Sim.     cosine NearestNeighbors · top-10 similar players
          │
          ├── Materialized Views  mv_team_xg · mv_shot_locations (zero-downtime refresh)
          ├── BI Visualisations   5 PNG charts · mplsoccer · 90-day CI artifacts
@@ -67,24 +72,26 @@ StatsBomb Open Data / Opta F24
 flowchart TD
     SB["StatsBomb Open Data\n147 matches · 524,457 events"]
     OA["Opta F24 JSON\nvia OptaAdapter"]
+    WY["Wyscout v3 JSON\nvia WyscoutAdapter"]
 
     subgraph DART["Dart Ingestion Service — :8090"]
-        SA["StatsBombAdapter"]
-        OPT["OptaAdapter"]
+        SA["StatsBombAdapter\n120×80"]
+        OPT["OptaAdapter\n100×100"]
+        WSC["WyscoutAdapter\n100×100"]
         PW["PostgresWriter\nON CONFLICT DO NOTHING"]
     end
 
     subgraph PG["PostgreSQL 15"]
         FE["fact_events\nLIST-partitioned · competition_id\nxt_value · xp_value · xg_value"]
         DIM["dim_matches · dim_players\ndim_teams · dim_competitions"]
-        AUX["xt_surface 192 cells\nset_piece_clusters\nmodel_registry\nmv_team_xg"]
+        AUX["xt_surface 192 cells\nset_piece_clusters\nmodel_registry\nmv_team_xg\nplayer_similarity_scores"]
     end
 
     subgraph DBT["dbt Medallion"]
         BR["Bronze\ntype-cast pass-through"]
-        SL["Silver\n105x68 m normalisation\nspatial range tests"]
+        SL["Silver\n105x68 m normalisation\nspatial range tests\nsilver_pass_links"]
         GD["Gold\nplayer + team aggregations"]
-        MT["Marts\nBI-ready tables"]
+        MT["Marts\nmart_pressing_metrics · mart_pass_network\nmart_player_metrics · mart_team_summary"]
     end
 
     subgraph ML["ML Pipeline"]
@@ -92,6 +99,7 @@ flowchart TD
         XT["xT Model\nValue iteration · 16x12"]
         XP["xP Model\nXGBoost · AUC 0.897"]
         KM["K-Means\nSet-piece clusters k=6"]
+        PS["Player Similarity\ncosine NearestNeighbors · top-10"]
     end
 
     subgraph SERVE["Serving Layer"]
@@ -103,10 +111,12 @@ flowchart TD
 
     SB --> SA
     OA --> OPT
-    SA & OPT --> PW --> FE & DIM
+    WY --> WSC
+    SA & OPT & WSC --> PW --> FE & DIM
     DIM & FE --> BR --> SL
-    SL --> XG & XT & XP & KM
+    SL --> XG & XT & XP & KM & PS
     XG & XT & XP & KM --> FE
+    PS --> AUX
     FE --> GD --> MT
     MT & AUX --> VIZ & PDF & XML & SUP
 ```
@@ -125,7 +135,14 @@ Ingests events for a single match.
 ```json
 {"provider": "statsbomb", "match_id": 3869685}
 ```
-Optional for Opta: `"file_path": "/data/match.json"` or `"url": "https://..."`
+Optional for Opta / Wyscout (file):
+```json
+{"provider": "wyscout", "match_id": 1234567, "file_path": "/data/wyscout_match.json"}
+```
+Optional for Wyscout (API with Bearer token):
+```json
+{"provider": "wyscout", "match_id": 1234567, "url": "https://...", "api_key": "TOKEN"}
+```
 
 **Response (200):**
 ```json
@@ -138,19 +155,22 @@ Optional for Opta: `"file_path": "/data/match.json"` or `"url": "https://..."`
 
 ---
 
-## What V2 Adds Over V1
+## What V3 Adds Over V1
 
-| Capability | V1 | V2 |
-|---|---|---|
-| Data providers | StatsBomb only | StatsBomb + Opta (adapter pattern) |
-| Ingestion language | Python | Dart microservice, HTTP API |
-| Coordinate system | StatsBomb 120×80 (raw) | Universal 105×68 m — single source of truth |
-| Data layer | Single staging schema | Bronze / Silver / Gold / Marts medallion |
-| Coordinate tests | None | dbt spatial range tests on every Silver run |
-| xG model | Post-hoc rescaled | CalibratedClassifierCV (Platt scaling) |
-| BI output | Superset (local only) | 5 static PNGs via CI — shareable artifacts |
-| CI coverage | Lint + unit tests | Full end-to-end pipeline on 524,457 events |
-| Data volume | Single match | 147 WC 2022 matches, bulk incremental loader |
+| Capability | V1 | V2 | V3 |
+|---|---|---|---|
+| Data providers | StatsBomb only | StatsBomb + Opta | + Wyscout v3 |
+| Ingestion language | Python | Dart microservice, HTTP API | Wyscout adapter (file + URL+Bearer) |
+| Coordinate system | StatsBomb 120×80 (raw) | Universal 105×68 m — single source of truth | wyscout_100x100 branch in coord_normalise macro |
+| Data layer | Single staging schema | Bronze / Silver / Gold / Marts medallion | + silver_pass_links |
+| Coordinate tests | None | dbt spatial range tests on every Silver run | wyscout added to accepted_values |
+| xG model | Post-hoc rescaled | CalibratedClassifierCV (Platt scaling) | xG feeds player similarity features |
+| BI output | Superset (local only) | 5 static PNGs via CI — shareable artifacts | + PPDA mart + pass network mart |
+| CI coverage | Lint + unit tests | Full end-to-end pipeline on 524,457 events | 131 tests (115 Python · 66 Dart) |
+| Data volume | Single match | 147 WC 2022 matches, bulk incremental loader | same |
+| Recruitment | None | `finishing_quality` metric in mart_player_metrics | Cosine similarity model — top-10 similar players per player |
+| Pressing analytics | None | None | PPDA per team per match with High/Medium/Low label |
+| Pass network | None | None | Player-to-player pass pairs with completion rate |
 
 ---
 
@@ -182,6 +202,10 @@ Optional for Opta: `"file_path": "/data/match.json"` or `"url": "https://..."`
 **Video integration:** the pipeline generates a SportsCode/Hudl-compatible XML file containing the 25 highest-xT events per match. Analysts open the file directly in Hudl Sportscode — no manual timestamp entry.
 
 **Striker recruitment:** `finishing_quality = goals − total_xG` separates clinical finishers from shot-volume players. Available in `mart_player_metrics`; directly queryable in Superset without custom SQL.
+
+**Hidden gem scouting:** the player similarity model indexes every player on 12 aggregated features (shot profile, pass profile, location, pressure resistance). A scout running `SELECT * FROM player_similarity_scores WHERE player_id = :target ORDER BY rank` receives the 10 most statistically similar players — surfacing affordable alternatives to a transfer target across any provider's dataset.
+
+**Pressing intensity analysis:** `mart_pressing_metrics` computes PPDA per team per match using all three providers' data. A PPDA of 6.2 (High) means the team forced an error or blocked every 6.2 opponent passes — directly comparable across StatsBomb, Opta, and Wyscout feeds without any manual normalisation.
 
 ---
 
