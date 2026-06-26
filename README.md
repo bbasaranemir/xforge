@@ -153,6 +153,54 @@ Optional for Wyscout (API with Bearer token):
 
 **Authentication:** Bearer token via `Authorization: Bearer <API_TOKEN>` header. Bypassed when `API_TOKEN` env var is not set (local dev / CI only).
 
+**Rate limiting:** 60 requests per minute per IP (sliding window). HTTP 429 with `Retry-After` header when exceeded.
+
+**Security:** HTTPS-only upstream URLs enforced in all adapters (SSRF protection). Bearer token compared in constant time (timing-attack resistance). Request body capped at 10 MB (DoS protection).
+
+---
+
+### GET /api/v1/matches/{id}/xg
+
+Returns xG values for all shot events in a match. Backed by a partial index on `fact_events(match_id) WHERE xg_value IS NOT NULL`.
+
+**Query params:** `limit` (default 200, max 2000) · `offset` (default 0)
+
+**Response (200):**
+```json
+{
+  "match_id": 3869685,
+  "limit": 200,
+  "offset": 0,
+  "events": [
+    {"event_id": "a1b2c3d4-...", "xg_value": 0.142},
+    {"event_id": "e5f6g7h8-...", "xg_value": 0.031}
+  ]
+}
+```
+
+**Error responses:** 400 (invalid match\_id or params), 401, 429 (rate limit)
+
+---
+
+### GET /api/v1/players/{id}/similar
+
+Returns up to 10 most similar players by cosine similarity across 12 aggregated features (goals/90, xG/90, progressive passes, pressures, etc.). Requires `player_similarity.py` to have been run first to populate `player_similarity_scores`.
+
+**Query params:** `position` (optional) — filters results to a specific position group (e.g. `CM`, `Left Center Back`). Letters and spaces only, max 60 chars. Blocks `<script>`, `../`, and control characters.
+
+**Response (200):**
+```json
+{
+  "player_id": 5503,
+  "similar": [
+    {"player_id": 6012, "player_name": "Luka Modrić", "position": "CM", "similarity_score": 0.947, "rank": 1},
+    {"player_id": 7234, "player_name": "Toni Kroos",  "position": "CM", "similarity_score": 0.931, "rank": 2}
+  ]
+}
+```
+
+**Error responses:** 400 (invalid player\_id or position format), 401, 429
+
 ---
 
 ## What V3 Adds Over V1
@@ -270,14 +318,18 @@ xforge/
 │   ├── Dockerfile                  # Multi-stage AOT compile — ~10 MB image
 │   ├── pubspec.yaml
 │   └── lib/
-│       ├── main.dart               # Shelf HTTP server — POST /ingest, GET /health
+│       ├── main.dart               # Shelf HTTP server — POST /ingest, GET /health,
+│       │                           #   GET /api/v1/matches/{id}/xg, GET /api/v1/players/{id}/similar
+│       ├── middleware/
+│       │   ├── bearer_auth.dart    # Constant-time Bearer token guard
+│       │   └── rate_limit.dart     # Sliding-window 60 req/min per IP
 │       ├── models/unified_event.dart
 │       ├── adapters/
 │       │   ├── adapter_interface.dart
 │       │   ├── statsbomb_adapter.dart   # 120×80 → UnifiedEvent
-│       │   ├── opta_adapter.dart        # 100×100 → UnifiedEvent
-│       │   └── wyscout_adapter.dart     # 100×100 → UnifiedEvent  (Wyscout v3)
-│       └── db/postgres_writer.dart      # Bulk INSERT ON CONFLICT DO NOTHING
+│       │   ├── opta_adapter.dart        # 100×100 → UnifiedEvent + SSRF guard
+│       │   └── wyscout_adapter.dart     # 100×100 → UnifiedEvent  (Wyscout v3) + SSRF guard
+│       └── db/postgres_writer.dart      # Bulk INSERT + queryXgValues + querySimilarPlayers
 ├── dbt_project/
 │   ├── macros/
 │   │   └── coord_normalise.sql     # normalise_x / normalise_y — single normalisation point
