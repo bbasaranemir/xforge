@@ -197,11 +197,12 @@ def run() -> None:
     df = fetch_player_features(engine)
 
     if len(df) == 0:
-        raise RuntimeError(
-            "No players found with sufficient match data (min_matches=%d). "
-            "Ingest at least one full match and run silver dbt models before "
-            "executing player_similarity.py." % MIN_MATCHES
+        log.warning(
+            "No players found with min_matches>=%d — skipping similarity computation. "
+            "Run with ingest_season=true or ingest more matches first.",
+            MIN_MATCHES,
         )
+        return
 
     if len(df) < N_NEIGHBORS + 1:
         log.warning(
