@@ -36,6 +36,21 @@ class WyscoutAdapter implements DataAdapter {
 
   WyscoutAdapter({http.Client? client}) : _client = client ?? http.Client();
 
+  /// Validates that a URL is HTTPS and does not target internal/cloud-metadata hosts.
+  static void _validateUrl(String url) {
+    final uri = Uri.parse(url);
+    if (uri.scheme != 'https') {
+      throw ArgumentError('Only HTTPS URLs are allowed');
+    }
+    const _blockedHosts = {'169.254.169.254', 'localhost', '127.0.0.1', '0.0.0.0'};
+    if (_blockedHosts.contains(uri.host) ||
+        uri.host.startsWith('192.168.') ||
+        uri.host.startsWith('10.') ||
+        uri.host.startsWith('172.')) {
+      throw ArgumentError('URL targets a blocked host: ${uri.host}');
+    }
+  }
+
   @override
   String get providerName => 'wyscout';
 
@@ -53,13 +68,17 @@ class WyscoutAdapter implements DataAdapter {
       final content = await File(options['file_path'] as String).readAsString();
       data = jsonDecode(content) as Map<String, dynamic>;
     } else if (options.containsKey('url')) {
-      final uri = Uri.parse(options['url'] as String);
+      final url = options['url'] as String;
+      _validateUrl(url);
       final apiKey = options['api_key'] as String?;
       final headers = <String, String>{};
       if (apiKey != null && apiKey.isNotEmpty) {
+        if (!RegExp(r'^[\w\-\.]{8,256}$').hasMatch(apiKey)) {
+          throw ArgumentError('Invalid api_key format');
+        }
         headers['Authorization'] = 'Bearer $apiKey';
       }
-      final response = await _client.get(uri, headers: headers);
+      final response = await _client.get(Uri.parse(url), headers: headers);
       if (response.statusCode != 200) {
         throw Exception('Wyscout fetch failed: HTTP ${response.statusCode}');
       }

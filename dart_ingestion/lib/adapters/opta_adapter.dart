@@ -42,6 +42,21 @@ class OptaAdapter implements DataAdapter {
 
   OptaAdapter({http.Client? client}) : _client = client ?? http.Client();
 
+  /// Validates that a URL is HTTPS and does not target internal/cloud-metadata hosts.
+  static void _validateUrl(String url) {
+    final uri = Uri.parse(url);
+    if (uri.scheme != 'https') {
+      throw ArgumentError('Only HTTPS URLs are allowed');
+    }
+    const _blockedHosts = {'169.254.169.254', 'localhost', '127.0.0.1', '0.0.0.0'};
+    if (_blockedHosts.contains(uri.host) ||
+        uri.host.startsWith('192.168.') ||
+        uri.host.startsWith('10.') ||
+        uri.host.startsWith('172.')) {
+      throw ArgumentError('URL targets a blocked host: ${uri.host}');
+    }
+  }
+
   @override
   String get providerName => 'opta';
 
@@ -59,7 +74,9 @@ class OptaAdapter implements DataAdapter {
       final content = await File(options['file_path'] as String).readAsString();
       data = jsonDecode(content) as Map<String, dynamic>;
     } else if (options.containsKey('url')) {
-      final response = await _client.get(Uri.parse(options['url'] as String));
+      final url = options['url'] as String;
+      _validateUrl(url);
+      final response = await _client.get(Uri.parse(url));
       if (response.statusCode != 200) {
         throw Exception('Opta fetch failed: HTTP ${response.statusCode}');
       }

@@ -18,7 +18,7 @@ def run():
         for mv in MATERIALIZED_VIEWS:
             if mv not in _ALLOWED_MVS:
                 raise ValueError(f"Unknown materialized view: {mv}")
-            conn.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}"))
+            conn.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY " + mv))
             log.info("Refreshed: %s", mv)
     log.info("All materialized views refreshed.")
 

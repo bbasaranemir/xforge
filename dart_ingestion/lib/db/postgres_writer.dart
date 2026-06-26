@@ -162,5 +162,53 @@ ON CONFLICT (event_id, competition_id) DO NOTHING
     return result.affectedRows;
   }
 
+  /// Returns xG values for all shot events in a given match.
+  Future<List<Map<String, dynamic>>> queryXgValues(int matchId) async {
+    final result = await _conn.execute(
+      Sql.named(
+        'SELECT event_id, xg_value '
+        'FROM fact_events '
+        'WHERE match_id = @id AND xg_value IS NOT NULL '
+        'ORDER BY event_id',
+      ),
+      parameters: {'id': matchId},
+    );
+    return result
+        .map((r) => {'event_id': r[0]?.toString(), 'xg_value': r[1]})
+        .toList();
+  }
+
+  /// Returns the top-10 most similar players to [playerId].
+  /// When [position] is provided, results are filtered to that position group.
+  Future<List<Map<String, dynamic>>> querySimilarPlayers(
+    int playerId, {
+    String? position,
+  }) async {
+    final hasPosition = position != null && position.isNotEmpty;
+    final sql = Sql.named(
+      'SELECT pss.similar_player_id, dp.player_name, dp.position, '
+      '       pss.similarity_score, pss.rank '
+      'FROM player_similarity_scores pss '
+      'JOIN dim_players dp ON pss.similar_player_id = dp.player_id '
+      'WHERE pss.player_id = @pid '
+      '${hasPosition ? "AND dp.position = @pos " : ""}'
+      'ORDER BY pss.rank '
+      'LIMIT 10',
+    );
+    final params = <String, dynamic>{'pid': playerId};
+    if (hasPosition) params['pos'] = position;
+
+    final result = await _conn.execute(sql, parameters: params);
+    return result
+        .map((r) => {
+              'player_id': r[0],
+              'player_name': r[1]?.toString(),
+              'position': r[2]?.toString(),
+              'similarity_score': r[3],
+              'rank': r[4],
+            })
+        .toList();
+  }
+
   Future<void> close() => _conn.close();
 }

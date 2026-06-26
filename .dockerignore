@@ -1,0 +1,13 @@
+.git/
+.github/
+.pytest_cache/
+.coverage
+coverage.xml
+.env
+tests/
+*.pdf
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.mypy_cache/

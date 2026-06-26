@@ -50,3 +50,16 @@ models:
           - dbt_utils.accepted_range:
               min_value: 2
               inclusive: true
+
+  - name: mart_set_piece_clusters
+    description: "Set-piece and shot-map K-Means clusters from tactical analysis (Corner + Shot event types)"
+    columns:
+      - name: event_type
+        tests: [not_null]
+      - name: cluster_label
+        tests: [not_null]
+      - name: member_count
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true

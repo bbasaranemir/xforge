@@ -330,7 +330,7 @@ void main() {
       await expectLater(
         () => _adapter(client: client).fetchEvents(
           matchId: 1,
-          options: {'url': 'http://example.com/wyscout.json'},
+          options: {'url': 'https://example.com/wyscout.json'},
         ),
         throwsA(isA<Exception>().having(
           (e) => e.toString(),
@@ -355,7 +355,7 @@ void main() {
 
       final events = await _adapter(client: client).fetchEvents(
         matchId: 3,
-        options: {'url': 'http://example.com/wyscout.json', 'competition_id': 1},
+        options: {'url': 'https://example.com/wyscout.json', 'competition_id': 1},
       );
 
       expect(events, hasLength(1));
@@ -374,7 +374,7 @@ void main() {
       await _adapter(client: client).fetchEvents(
         matchId: 1,
         options: {
-          'url': 'http://api.wyscout.com/v3/matches/1/events',
+          'url': 'https://api.wyscout.com/v3/matches/1/events',
           'api_key': 'secret-token-xyz',
         },
       );

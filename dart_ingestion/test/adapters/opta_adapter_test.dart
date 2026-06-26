@@ -177,7 +177,7 @@ void main() {
       await expectLater(
         () => _adapter(client: client).fetchEvents(
           matchId: 1,
-          options: {'url': 'http://example.com/feed.json'},
+          options: {'url': 'https://example.com/feed.json'},
         ),
         throwsA(isA<Exception>().having(
           (e) => e.toString(),
@@ -194,7 +194,7 @@ void main() {
 
       final events = await _adapter(client: client).fetchEvents(
         matchId: 5,
-        options: {'url': 'http://example.com/feed.json', 'competition_id': 1},
+        options: {'url': 'https://example.com/feed.json', 'competition_id': 1},
       );
 
       expect(events, hasLength(1));
