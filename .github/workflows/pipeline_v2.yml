@@ -67,7 +67,7 @@ jobs:
           --shm-size 256m
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 'postgres' hostname resolves to localhost — all scripts/dbt work unchanged
       - name: Map 'postgres' hostname
