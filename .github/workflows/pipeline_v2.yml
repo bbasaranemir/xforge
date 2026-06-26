@@ -83,6 +83,16 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      # ── Dependency vulnerability scan ──────────────────────────────────────
+      - name: Trivy filesystem scan (Python + Dart deps)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # Informational — does not block pipeline
+
       # ── Python unit tests ───────────────────────────────────────────────────
       - name: Python unit tests
         run: |

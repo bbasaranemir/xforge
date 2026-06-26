@@ -93,3 +93,18 @@ CREATE TABLE IF NOT EXISTS player_similarity_scores (
 
 CREATE INDEX IF NOT EXISTS idx_pss_player
     ON player_similarity_scores (player_id, rank);
+
+-- ─── Performance indexes for REST API endpoints ─────────────────────────────
+
+-- GET /api/v1/matches/{id}/xg — filters fact_events by match_id without
+-- competition_id, so the PK (event_id, competition_id) is not usable.
+-- This index enables single-partition or cross-partition match lookups.
+CREATE INDEX IF NOT EXISTS idx_fe_match_xg
+    ON fact_events (match_id)
+    WHERE xg_value IS NOT NULL;
+
+-- GET /api/v1/players/{id}/similar?position= — the JOIN to dim_players
+-- filters on position; without an index this is a full table scan.
+CREATE INDEX IF NOT EXISTS idx_dp_position
+    ON dim_players (position)
+    WHERE position IS NOT NULL;

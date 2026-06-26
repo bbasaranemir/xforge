@@ -9,6 +9,7 @@ import 'adapters/wyscout_adapter.dart';
 import 'adapters/adapter_interface.dart';
 import 'db/postgres_writer.dart';
 import 'middleware/bearer_auth.dart';
+import 'middleware/rate_limit.dart';
 import 'models/unified_event.dart';
 
 /// Logs a message to stderr with an [xforge] prefix.
@@ -18,6 +19,13 @@ void _log(String message) => stderr.writeln('[xforge] $message');
 const _jsonHeaders = {'content-type': 'application/json'};
 const _maxBodyBytes = 10 * 1024 * 1024; // 10 MB
 const _validProviders = {'statsbomb', 'opta', 'wyscout'};
+const _maxPageLimit = 2000;
+const _defaultPageLimit = 200;
+
+/// StatsBomb position names use natural language — validate with permissive
+/// regex rather than a closed enum to stay compatible with future providers.
+/// Blocks script tags, path traversal, and control characters.
+final _positionPattern = RegExp(r'^[A-Za-z ]{1,60}$');
 
 /// Opens a DB connection using environment variables.
 Future<PostgresWriter> _openWriter() => PostgresWriter.connect(
@@ -102,16 +110,23 @@ void main() async {
   });
 
   // ── REST API: xG values for a match ─────────────────────────────────────────
+  // Pagination: ?limit=200&offset=0  (max limit 2000)
   router.get('/api/v1/matches/<id>/xg', (Request req, String id) async {
     final matchId = int.tryParse(id);
     if (matchId == null || matchId < 1) {
       return Response(400, body: '{"error":"Invalid match_id"}', headers: _jsonHeaders);
     }
+    final limit = _parseIntParam(req, 'limit', _defaultPageLimit, max: _maxPageLimit);
+    final offset = _parseIntParam(req, 'offset', 0);
+    if (limit == null || offset == null) {
+      return Response(400, body: '{"error":"limit and offset must be non-negative integers"}',
+          headers: _jsonHeaders);
+    }
     final writer = await _openWriter();
     try {
-      final rows = await writer.queryXgValues(matchId);
+      final rows = await writer.queryXgValues(matchId, limit: limit, offset: offset);
       return Response.ok(
-        jsonEncode({'match_id': matchId, 'events': rows}),
+        jsonEncode({'match_id': matchId, 'limit': limit, 'offset': offset, 'events': rows}),
         headers: _jsonHeaders,
       );
     } finally {
@@ -127,6 +142,11 @@ void main() async {
       return Response(400, body: '{"error":"Invalid player_id"}', headers: _jsonHeaders);
     }
     final position = req.url.queryParameters['position'];
+    if (position != null && !_positionPattern.hasMatch(position)) {
+      return Response(400,
+          body: '{"error":"position must be letters and spaces only, max 60 chars"}',
+          headers: _jsonHeaders);
+    }
     final writer = await _openWriter();
     try {
       final rows = await writer.querySimilarPlayers(playerId, position: position);
@@ -139,9 +159,11 @@ void main() async {
     }
   });
 
-  // Bearer auth covers all routes; health is explicitly excluded via path check inside middleware.
+  // Pipeline: rate limiting → auth → routes
+  // Health endpoint is public (bearerAuth no-ops when token unset in CI).
   final handler = const Pipeline()
       .addMiddleware(logRequests())
+      .addMiddleware(rateLimit(maxRequests: 60, window: Duration(minutes: 1)))
       .addMiddleware(bearerAuth())
       .addHandler(router.call);
 
@@ -152,4 +174,14 @@ void main() async {
     _log('WARNING: API_TOKEN is not set — /ingest endpoint is unauthenticated. Set API_TOKEN in production.');
   }
   _log('Service started on port ${server.port}');
+}
+
+/// Parses an integer query parameter, clamping to [max] when provided.
+/// Returns null if the value is present but non-numeric or negative.
+int? _parseIntParam(Request req, String name, int defaultValue, {int? max}) {
+  final raw = req.url.queryParameters[name];
+  if (raw == null) return (max != null && defaultValue > max) ? max : defaultValue;
+  final parsed = int.tryParse(raw);
+  if (parsed == null || parsed < 0) return null;
+  return (max != null && parsed > max) ? max : parsed;
 }

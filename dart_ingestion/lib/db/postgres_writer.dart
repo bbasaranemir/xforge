@@ -162,16 +162,21 @@ ON CONFLICT (event_id, competition_id) DO NOTHING
     return result.affectedRows;
   }
 
-  /// Returns xG values for all shot events in a given match.
-  Future<List<Map<String, dynamic>>> queryXgValues(int matchId) async {
+  /// Returns xG values for shot events in a given match with pagination.
+  Future<List<Map<String, dynamic>>> queryXgValues(
+    int matchId, {
+    int limit = 200,
+    int offset = 0,
+  }) async {
     final result = await _conn.execute(
       Sql.named(
         'SELECT event_id, xg_value '
         'FROM fact_events '
         'WHERE match_id = @id AND xg_value IS NOT NULL '
-        'ORDER BY event_id',
+        'ORDER BY event_id '
+        'LIMIT @lim OFFSET @off',
       ),
-      parameters: {'id': matchId},
+      parameters: {'id': matchId, 'lim': limit, 'off': offset},
     );
     return result
         .map((r) => {'event_id': r[0]?.toString(), 'xg_value': r[1]})
