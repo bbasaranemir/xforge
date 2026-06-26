@@ -3,20 +3,10 @@ version: 2
 sources:
   - name: public
     description: >
-      Raw tables written directly by Python scripts (tactical_models.py,
-      player_similarity.py) and the Dart ingestion service. Not managed
-      by dbt — registered here so marts can reference them via source().
+      Raw tables written by Python ML scripts — not managed by dbt.
+      fact_events, dim_players, dim_teams are defined in staging/schema.yml.
     schema: public
     tables:
-      - name: fact_events
-        description: Bronze event rows written by the Dart ingestion service.
-
-      - name: dim_players
-        description: Player dimension — populated by ingestion.
-
-      - name: dim_teams
-        description: Team dimension — populated by ingestion.
-
       - name: set_piece_clusters
         description: >
           K-Means cluster centroids for corner and shot locations.
