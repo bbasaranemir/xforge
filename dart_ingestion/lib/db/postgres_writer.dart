@@ -328,8 +328,123 @@ ON CONFLICT (event_id, competition_id) DO NOTHING
     return {'target': target, 'candidates': candidates, 'recommendation': recommendation};
   }
 
-  static double _safeDouble(dynamic v) =>
-      v == null ? 0.0 : (v as num).toDouble();
+  /// Returns a decision-ready match summary for [matchId].
+  ///
+  /// Three analytical outputs:
+  ///  - xg_diff  : home_xg − away_xg — was the scoreline fair?
+  ///  - pressing_intensity : PPDA-derived High/Medium/Low label per team
+  ///  - key_threats : top-3 players by cumulative xT in the match
+  Future<Map<String, dynamic>> queryMatchSummary(int matchId) async {
+    // ── Match info + per-team xG ───────────────────────────────────────────────
+    // gold_team_summary is materialized per (team_id, match_id).
+    // We join twice — once for home, once for away — using dim_matches.home/away_team.
+    // ::float8 casts ensure Dart receives doubles, not NUMERIC strings.
+    final matchResult = await _conn.execute(
+      Sql.named(
+        'SELECT dm.match_id, dm.home_team, dm.away_team, '
+        '       dm.home_score, dm.away_score, '
+        '       COALESCE(hg.total_xg, 0.0)::float8 AS home_xg, '
+        '       COALESCE(ag.total_xg, 0.0)::float8 AS away_xg '
+        'FROM dim_matches dm '
+        'LEFT JOIN analytics_gold.gold_team_summary hg '
+        '       ON hg.match_id = dm.match_id AND hg.team_name = dm.home_team '
+        'LEFT JOIN analytics_gold.gold_team_summary ag '
+        '       ON ag.match_id = dm.match_id AND ag.team_name = dm.away_team '
+        'WHERE dm.match_id = @mid '
+        'LIMIT 1',
+      ),
+      parameters: {'mid': matchId},
+    );
+
+    if (matchResult.isEmpty) {
+      return {'error': 'Match $matchId not found'};
+    }
+
+    final m = matchResult.first;
+    final homeTeam = m[1]?.toString() ?? '';
+    final awayTeam = m[2]?.toString() ?? '';
+    final homeXg  = _safeDouble(m[5]);
+    final awayXg  = _safeDouble(m[6]);
+    final xgDiff  = double.parse((homeXg - awayXg).toStringAsFixed(4));
+
+    // ── Pressing intensity (PPDA) per team ────────────────────────────────────
+    // mart_pressing_metrics lives in analytics_analytics_marts because the dbt
+    // generate_schema_name macro prefixes every custom schema with "analytics_".
+    final pressingResult = await _conn.execute(
+      Sql.named(
+        'SELECT team_name, ppda::float8, pressing_intensity '
+        'FROM analytics_analytics_marts.mart_pressing_metrics '
+        'WHERE match_id = @mid',
+      ),
+      parameters: {'mid': matchId},
+    );
+
+    Map<String, dynamic> homePress = {'label': 'N/A', 'ppda': null};
+    Map<String, dynamic> awayPress = {'label': 'N/A', 'ppda': null};
+    for (final r in pressingResult) {
+      final tName = r[0]?.toString() ?? '';
+      final entry = {
+        'label': r[2]?.toString() ?? 'N/A',
+        'ppda': _safeDouble(r[1]),
+      };
+      if (tName == homeTeam) {
+        homePress = entry;
+      } else if (tName == awayTeam) {
+        awayPress = entry;
+      }
+    }
+
+    // ── Top-3 xT contributors ─────────────────────────────────────────────────
+    // xt_value is FLOAT in fact_events — SUM returns DOUBLE PRECISION, no cast needed.
+    final threatsResult = await _conn.execute(
+      Sql.named(
+        'SELECT dp.player_name, dt.team_name, '
+        '       ROUND(SUM(fe.xt_value)::numeric, 4)::float8 AS total_xt '
+        'FROM fact_events fe '
+        'JOIN dim_players dp ON fe.player_id = dp.player_id '
+        'JOIN dim_teams   dt ON fe.team_id   = dt.team_id '
+        'WHERE fe.match_id = @mid '
+        '  AND fe.xt_value > 0 '
+        'GROUP BY dp.player_name, dt.team_name '
+        'ORDER BY total_xt DESC '
+        'LIMIT 3',
+      ),
+      parameters: {'mid': matchId},
+    );
+
+    final keyThreats = <Map<String, dynamic>>[];
+    for (var i = 0; i < threatsResult.length; i++) {
+      final r = threatsResult[i];
+      keyThreats.add({
+        'rank': i + 1,
+        'player_name': r[0]?.toString(),
+        'team': r[1]?.toString(),
+        'total_xt': _safeDouble(r[2]),
+      });
+    }
+
+    return {
+      'match_id': matchId,
+      'home_team': homeTeam,
+      'away_team': awayTeam,
+      'home_score': m[3],
+      'away_score': m[4],
+      'xg_home': homeXg,
+      'xg_away': awayXg,
+      'xg_diff': xgDiff,
+      'pressing_intensity': {'home': homePress, 'away': awayPress},
+      'key_threats': keyThreats,
+    };
+  }
+
+  /// Safely converts PostgreSQL FLOAT, DOUBLE PRECISION, NUMERIC, or null to Dart double.
+  /// NUMERIC columns arrive as String from the postgres driver — handle both.
+  static double _safeDouble(dynamic v) {
+    if (v == null) return 0.0;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0.0;
+    return 0.0;
+  }
 
   Future<void> close() => _conn.close();
 }

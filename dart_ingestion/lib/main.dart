@@ -159,6 +159,23 @@ void main() async {
     }
   });
 
+  // ── REST API: decision-ready match summary ──────────────────────────────────
+  // Returns xg_diff (scoreline fairness), pressing_intensity (PPDA per team),
+  // and key_threats (top-3 xT contributors).
+  router.get('/api/v1/matches/<id>/summary', (Request req, String id) async {
+    final matchId = int.tryParse(id);
+    if (matchId == null || matchId < 1) {
+      return Response(400, body: '{"error":"Invalid match_id"}', headers: _jsonHeaders);
+    }
+    final writer = await _openWriter();
+    try {
+      final result = await writer.queryMatchSummary(matchId);
+      return Response.ok(jsonEncode(result), headers: _jsonHeaders);
+    } finally {
+      await writer.close();
+    }
+  });
+
   // ── REST API: replacement candidates for a player ───────────────────────────
   // Returns target profile, top-N similar candidates with stat deltas, and a
   // plain-English recommendation string.  ?top_n=3  (optional, 1–10)
