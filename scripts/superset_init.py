@@ -33,14 +33,14 @@ SAVED_QUERIES = [
     {
         "label": "Player xT Ranking",
         "description": "Top 20 players by total xT across all matches",
-        "schema": "analytics_marts",
-        "sql": "SELECT player_name, team_name, total_passes, successful_passes, pass_completion_pct, avg_pass_distance, total_xt, avg_xt_per_pass, passes_under_pressure FROM analytics_marts.mart_player_metrics WHERE total_xt IS NOT NULL ORDER BY total_xt DESC LIMIT 20;",  # noqa: E501
+        "schema": "analytics_analytics_marts",
+        "sql": "SELECT player_name, team_name, total_passes, successful_passes, pass_completion_pct, avg_pass_distance, total_xt, avg_xt_per_pass, passes_under_pressure FROM analytics_analytics_marts.mart_player_metrics WHERE total_xt IS NOT NULL ORDER BY total_xt DESC LIMIT 20;",  # noqa: E501
     },
     {
         "label": "Team Action Summary",
         "description": "Per-team action counts and total xT",
-        "schema": "analytics_marts",
-        "sql": "SELECT team_name, total_actions, total_passes, total_shots, total_dribbles, total_pressures, total_xt FROM analytics_marts.mart_team_summary ORDER BY total_xt DESC NULLS LAST;",  # noqa: E501
+        "schema": "analytics_analytics_marts",
+        "sql": "SELECT team_name, total_actions, total_passes, total_shots, total_dribbles, total_pressures, total_xt FROM analytics_analytics_marts.mart_team_summary ORDER BY total_xt DESC NULLS LAST;",  # noqa: E501
     },
     {
         "label": "xT by Pitch Zone",
