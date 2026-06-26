@@ -170,6 +170,9 @@ void main() async {
     final writer = await _openWriter();
     try {
       final result = await writer.queryMatchSummary(matchId);
+      if (result.containsKey('error')) {
+        return Response.notFound(jsonEncode(result), headers: _jsonHeaders);
+      }
       return Response.ok(jsonEncode(result), headers: _jsonHeaders);
     } finally {
       await writer.close();
@@ -194,6 +197,9 @@ void main() async {
     try {
       final result =
           await writer.queryReplacementCandidates(playerId, topN: topN);
+      if (result.containsKey('error')) {
+        return Response.notFound(jsonEncode(result), headers: _jsonHeaders);
+      }
       return Response.ok(jsonEncode(result), headers: _jsonHeaders);
     } finally {
       await writer.close();

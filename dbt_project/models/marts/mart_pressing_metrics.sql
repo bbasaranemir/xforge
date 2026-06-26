@@ -44,15 +44,20 @@ select
     d.team_id,
     t.team_name,
     d.defensive_actions,
-    coalesce(pa.passes_allowed, 0)                                      as passes_allowed,
+    coalesce(pa.passes_allowed, 0)                                       as passes_allowed,
+    -- Standard PPDA = passes_allowed / defensive_actions (lower = more pressing).
+    -- Previous version had numerator and denominator swapped, causing every match
+    -- to return values < 1 and be labelled 'High'.
     round(
-        d.defensive_actions::numeric
-        / nullif(pa.passes_allowed, 0),
+        coalesce(pa.passes_allowed, 0)::numeric
+        / nullif(d.defensive_actions, 0),
         4
     )                                                                    as ppda,
     case
-        when d.defensive_actions::numeric / nullif(pa.passes_allowed, 0) < 10  then 'High'
-        when d.defensive_actions::numeric / nullif(pa.passes_allowed, 0) < 15  then 'Medium'
+        when coalesce(pa.passes_allowed, 0)::numeric
+             / nullif(d.defensive_actions, 0) < 10  then 'High'
+        when coalesce(pa.passes_allowed, 0)::numeric
+             / nullif(d.defensive_actions, 0) < 15  then 'Medium'
         else 'Low'
     end                                                                  as pressing_intensity
 from defensive d

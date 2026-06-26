@@ -207,15 +207,17 @@ def find_replacement(engine, player_id: int, top_n: int = 3) -> dict:
     pre-computed cosine similarity ranks, then returns a decision-ready dict:
     target profile, candidate list with per-stat deltas, and a text recommendation.
     """
+    top_n = max(1, top_n)
     target_sql = text(
         """
         SELECT dp.player_id, dp.player_name, dp.position,
-               COALESCE(m.avg_xg, 0.0)             AS avg_xg,
+               COALESCE(m.avg_xg, 0.0)              AS avg_xg,
                COALESCE(m.pass_completion_pct, 0.0)  AS pass_completion_pct,
-               COALESCE(m.avg_xt_per_pass, 0.0)     AS avg_xt_per_pass,
-               COALESCE(m.total_shots, 0)            AS total_shots
+               COALESCE(m.avg_xt_per_pass, 0.0)      AS avg_xt_per_pass,
+               COALESCE(m.total_shots, 0)             AS total_shots
         FROM dim_players dp
-        LEFT JOIN mart_player_metrics m ON dp.player_id = m.player_id
+        LEFT JOIN analytics_analytics_marts.mart_player_metrics m
+               ON dp.player_id = m.player_id
         WHERE dp.player_id = :pid
         LIMIT 1
         """
@@ -227,13 +229,14 @@ def find_replacement(engine, player_id: int, top_n: int = 3) -> dict:
                pss.rank,
                dp.player_name,
                dp.position,
-               COALESCE(m.avg_xg, 0.0)             AS avg_xg,
+               COALESCE(m.avg_xg, 0.0)              AS avg_xg,
                COALESCE(m.pass_completion_pct, 0.0)  AS pass_completion_pct,
-               COALESCE(m.avg_xt_per_pass, 0.0)     AS avg_xt_per_pass,
-               COALESCE(m.total_shots, 0)            AS total_shots
+               COALESCE(m.avg_xt_per_pass, 0.0)      AS avg_xt_per_pass,
+               COALESCE(m.total_shots, 0)             AS total_shots
         FROM player_similarity_scores pss
         JOIN dim_players dp ON pss.similar_player_id = dp.player_id
-        LEFT JOIN mart_player_metrics m ON pss.similar_player_id = m.player_id
+        LEFT JOIN analytics_analytics_marts.mart_player_metrics m
+               ON pss.similar_player_id = m.player_id
         WHERE pss.player_id = :pid
         ORDER BY pss.rank
         LIMIT :top_n

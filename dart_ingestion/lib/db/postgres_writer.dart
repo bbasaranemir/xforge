@@ -230,10 +230,11 @@ ON CONFLICT (event_id, competition_id) DO NOTHING
         'SELECT dp.player_id, dp.player_name, dp.position, '
         '       COALESCE(m.avg_xg, 0.0)              AS avg_xg, '
         '       COALESCE(m.pass_completion_pct, 0.0)  AS pass_completion_pct, '
-        '       COALESCE(m.avg_xt_per_pass, 0.0)     AS avg_xt_per_pass, '
-        '       COALESCE(m.total_shots, 0)            AS total_shots '
+        '       COALESCE(m.avg_xt_per_pass, 0.0)      AS avg_xt_per_pass, '
+        '       COALESCE(m.total_shots, 0)             AS total_shots '
         'FROM dim_players dp '
-        'LEFT JOIN mart_player_metrics m ON dp.player_id = m.player_id '
+        'LEFT JOIN analytics_analytics_marts.mart_player_metrics m '
+        '       ON dp.player_id = m.player_id '
         'WHERE dp.player_id = @pid '
         'LIMIT 1',
       ),
@@ -267,11 +268,12 @@ ON CONFLICT (event_id, competition_id) DO NOTHING
         '       dp.player_name, dp.position, '
         '       COALESCE(m.avg_xg, 0.0)              AS avg_xg, '
         '       COALESCE(m.pass_completion_pct, 0.0)  AS pass_completion_pct, '
-        '       COALESCE(m.avg_xt_per_pass, 0.0)     AS avg_xt_per_pass, '
-        '       COALESCE(m.total_shots, 0)            AS total_shots '
+        '       COALESCE(m.avg_xt_per_pass, 0.0)      AS avg_xt_per_pass, '
+        '       COALESCE(m.total_shots, 0)             AS total_shots '
         'FROM player_similarity_scores pss '
         'JOIN dim_players dp ON pss.similar_player_id = dp.player_id '
-        'LEFT JOIN mart_player_metrics m ON pss.similar_player_id = m.player_id '
+        'LEFT JOIN analytics_analytics_marts.mart_player_metrics m '
+        '       ON pss.similar_player_id = m.player_id '
         'WHERE pss.player_id = @pid '
         'ORDER BY pss.rank '
         'LIMIT @top_n',
@@ -383,9 +385,11 @@ ON CONFLICT (event_id, competition_id) DO NOTHING
     Map<String, dynamic> awayPress = {'label': 'N/A', 'ppda': null};
     for (final r in pressingResult) {
       final tName = r[0]?.toString() ?? '';
+      // Preserve null when passes_allowed was 0 (PPDA undefined) instead of
+      // collapsing to 0.0 — callers should treat null as "no data".
       final entry = {
         'label': r[2]?.toString() ?? 'N/A',
-        'ppda': _safeDouble(r[1]),
+        'ppda': r[1] == null ? null : _safeDouble(r[1]),
       };
       if (tName == homeTeam) {
         homePress = entry;
