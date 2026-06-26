@@ -159,6 +159,30 @@ void main() async {
     }
   });
 
+  // ── REST API: replacement candidates for a player ───────────────────────────
+  // Returns target profile, top-N similar candidates with stat deltas, and a
+  // plain-English recommendation string.  ?top_n=3  (optional, 1–10)
+  router.get('/api/v1/players/<id>/replacement', (Request req, String id) async {
+    final playerId = int.tryParse(id);
+    if (playerId == null || playerId < 1) {
+      return Response(400, body: '{"error":"Invalid player_id"}', headers: _jsonHeaders);
+    }
+    final topN = _parseIntParam(req, 'top_n', 3, max: 10);
+    if (topN == null || topN < 1) {
+      return Response(400,
+          body: '{"error":"top_n must be between 1 and 10"}',
+          headers: _jsonHeaders);
+    }
+    final writer = await _openWriter();
+    try {
+      final result =
+          await writer.queryReplacementCandidates(playerId, topN: topN);
+      return Response.ok(jsonEncode(result), headers: _jsonHeaders);
+    } finally {
+      await writer.close();
+    }
+  });
+
   // Pipeline: rate limiting → auth → routes
   // Health endpoint is public (bearerAuth no-ops when token unset in CI).
   final handler = const Pipeline()

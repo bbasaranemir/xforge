@@ -215,5 +215,121 @@ ON CONFLICT (event_id, competition_id) DO NOTHING
         .toList();
   }
 
+  /// Returns replacement candidates for [playerId] with profile comparison.
+  ///
+  /// Joins [player_similarity_scores] with [mart_player_metrics] to produce a
+  /// decision-ready payload: target stats, top-[topN] candidates, per-stat deltas,
+  /// and a plain-English recommendation string.
+  Future<Map<String, dynamic>> queryReplacementCandidates(
+    int playerId, {
+    int topN = 3,
+  }) async {
+    // ── Target player ──────────────────────────────────────────────────────────
+    final targetResult = await _conn.execute(
+      Sql.named(
+        'SELECT dp.player_id, dp.player_name, dp.position, '
+        '       COALESCE(m.avg_xg, 0.0)              AS avg_xg, '
+        '       COALESCE(m.pass_completion_pct, 0.0)  AS pass_completion_pct, '
+        '       COALESCE(m.avg_xt_per_pass, 0.0)     AS avg_xt_per_pass, '
+        '       COALESCE(m.total_shots, 0)            AS total_shots '
+        'FROM dim_players dp '
+        'LEFT JOIN mart_player_metrics m ON dp.player_id = m.player_id '
+        'WHERE dp.player_id = @pid '
+        'LIMIT 1',
+      ),
+      parameters: {'pid': playerId},
+    );
+
+    if (targetResult.isEmpty) {
+      return {'error': 'Player $playerId not found or missing metrics'};
+    }
+
+    final t = targetResult.first;
+    final tXg = _safeDouble(t[3]);
+    final tPc = _safeDouble(t[4]);
+    final tXt = _safeDouble(t[5]);
+    final target = {
+      'player_id': t[0],
+      'player_name': t[1]?.toString(),
+      'position': t[2]?.toString(),
+      'stats': {
+        'avg_xg': tXg,
+        'pass_completion_pct': tPc,
+        'avg_xt_per_pass': tXt,
+        'total_shots': t[6],
+      },
+    };
+
+    // ── Candidates ─────────────────────────────────────────────────────────────
+    final candResult = await _conn.execute(
+      Sql.named(
+        'SELECT pss.similar_player_id, pss.similarity_score, pss.rank, '
+        '       dp.player_name, dp.position, '
+        '       COALESCE(m.avg_xg, 0.0)              AS avg_xg, '
+        '       COALESCE(m.pass_completion_pct, 0.0)  AS pass_completion_pct, '
+        '       COALESCE(m.avg_xt_per_pass, 0.0)     AS avg_xt_per_pass, '
+        '       COALESCE(m.total_shots, 0)            AS total_shots '
+        'FROM player_similarity_scores pss '
+        'JOIN dim_players dp ON pss.similar_player_id = dp.player_id '
+        'LEFT JOIN mart_player_metrics m ON pss.similar_player_id = m.player_id '
+        'WHERE pss.player_id = @pid '
+        'ORDER BY pss.rank '
+        'LIMIT @top_n',
+      ),
+      parameters: {'pid': playerId, 'top_n': topN},
+    );
+
+    final candidates = candResult.map((r) {
+      final cXg = _safeDouble(r[5]);
+      final cPc = _safeDouble(r[6]);
+      final cXt = _safeDouble(r[7]);
+      return {
+        'player_id': r[0],
+        'similarity_score': r[1],
+        'rank': r[2],
+        'player_name': r[3]?.toString(),
+        'position': r[4]?.toString(),
+        'stats': {
+          'avg_xg': cXg,
+          'pass_completion_pct': cPc,
+          'avg_xt_per_pass': cXt,
+          'total_shots': r[8],
+        },
+        'delta': {
+          'avg_xg': double.parse((cXg - tXg).toStringAsFixed(4)),
+          'pass_completion_pct': double.parse((cPc - tPc).toStringAsFixed(2)),
+          'avg_xt_per_pass': double.parse((cXt - tXt).toStringAsFixed(5)),
+        },
+      };
+    }).toList();
+
+    // ── Recommendation string ──────────────────────────────────────────────────
+    final String recommendation;
+    if (candidates.isEmpty) {
+      recommendation = 'No replacement candidates found for '
+          '${target['player_name']}. Run player_similarity.py first.';
+    } else {
+      final best = candidates.first;
+      final delta = best['delta'] as Map;
+      final bStats = best['stats'] as Map;
+      final xgDir = (delta['avg_xg'] as double) >= 0 ? 'higher' : 'lower';
+      final pcDir =
+          (delta['pass_completion_pct'] as double) >= 0 ? 'higher' : 'lower';
+      recommendation = 'Replacing ${target['player_name']}: best match is '
+          '${best['player_name']} (similarity '
+          '${(best['similarity_score'] as num).toStringAsFixed(2)}). '
+          'xG/shot ${(bStats['avg_xg'] as double).toStringAsFixed(3)} vs '
+          '${tXg.toStringAsFixed(3)} ($xgDir), '
+          'pass completion '
+          '${(bStats['pass_completion_pct'] as double).toStringAsFixed(1)}% '
+          'vs ${tPc.toStringAsFixed(1)}% ($pcDir).';
+    }
+
+    return {'target': target, 'candidates': candidates, 'recommendation': recommendation};
+  }
+
+  static double _safeDouble(dynamic v) =>
+      v == null ? 0.0 : (v as num).toDouble();
+
   Future<void> close() => _conn.close();
 }

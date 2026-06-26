@@ -200,6 +200,114 @@ def save_model_artifact(
     log.info("Player similarity model registered: %s", metrics)
 
 
+def find_replacement(engine, player_id: int, top_n: int = 3) -> dict:
+    """Returns top-N replacement candidates for a player with profile comparison.
+
+    Queries mart_player_metrics for key stats and player_similarity_scores for
+    pre-computed cosine similarity ranks, then returns a decision-ready dict:
+    target profile, candidate list with per-stat deltas, and a text recommendation.
+    """
+    target_sql = text(
+        """
+        SELECT dp.player_id, dp.player_name, dp.position,
+               COALESCE(m.avg_xg, 0.0)             AS avg_xg,
+               COALESCE(m.pass_completion_pct, 0.0)  AS pass_completion_pct,
+               COALESCE(m.avg_xt_per_pass, 0.0)     AS avg_xt_per_pass,
+               COALESCE(m.total_shots, 0)            AS total_shots
+        FROM dim_players dp
+        LEFT JOIN mart_player_metrics m ON dp.player_id = m.player_id
+        WHERE dp.player_id = :pid
+        LIMIT 1
+        """
+    )
+    candidates_sql = text(
+        """
+        SELECT pss.similar_player_id,
+               pss.similarity_score,
+               pss.rank,
+               dp.player_name,
+               dp.position,
+               COALESCE(m.avg_xg, 0.0)             AS avg_xg,
+               COALESCE(m.pass_completion_pct, 0.0)  AS pass_completion_pct,
+               COALESCE(m.avg_xt_per_pass, 0.0)     AS avg_xt_per_pass,
+               COALESCE(m.total_shots, 0)            AS total_shots
+        FROM player_similarity_scores pss
+        JOIN dim_players dp ON pss.similar_player_id = dp.player_id
+        LEFT JOIN mart_player_metrics m ON pss.similar_player_id = m.player_id
+        WHERE pss.player_id = :pid
+        ORDER BY pss.rank
+        LIMIT :top_n
+        """
+    )
+
+    with engine.connect() as conn:
+        target_row = conn.execute(target_sql, {"pid": player_id}).fetchone()
+        if target_row is None:
+            raise ValueError(f"Player {player_id} not found in dim_players")
+        cand_rows = conn.execute(
+            candidates_sql, {"pid": player_id, "top_n": top_n}
+        ).fetchall()
+
+    target_stats = {
+        "avg_xg": float(target_row[3]),
+        "pass_completion_pct": float(target_row[4]),
+        "avg_xt_per_pass": float(target_row[5]),
+        "total_shots": int(target_row[6]),
+    }
+    target = {
+        "player_id": target_row[0],
+        "player_name": target_row[1],
+        "position": target_row[2],
+        "stats": target_stats,
+    }
+
+    candidates = []
+    for r in cand_rows:
+        cand_stats = {
+            "avg_xg": float(r[5]),
+            "pass_completion_pct": float(r[6]),
+            "avg_xt_per_pass": float(r[7]),
+            "total_shots": int(r[8]),
+        }
+        delta = {
+            k: round(cand_stats[k] - target_stats[k], 4)
+            for k in ("avg_xg", "pass_completion_pct", "avg_xt_per_pass")
+        }
+        candidates.append(
+            {
+                "player_id": r[0],
+                "similarity_score": float(r[1]),
+                "rank": int(r[2]),
+                "player_name": r[3],
+                "position": r[4],
+                "stats": cand_stats,
+                "delta": delta,
+            }
+        )
+
+    if not candidates:
+        recommendation = (
+            f"No replacement candidates found for {target['player_name']}. "
+            "Run player_similarity.py first to populate similarity scores."
+        )
+    else:
+        best = candidates[0]
+        xg_dir = "higher" if best["delta"]["avg_xg"] >= 0 else "lower"
+        pc_dir = (
+            "higher" if best["delta"]["pass_completion_pct"] >= 0 else "lower"
+        )
+        recommendation = (
+            f"Replacing {target['player_name']}: best match is {best['player_name']} "
+            f"(similarity {best['similarity_score']:.2f}). "
+            f"xG/shot {best['stats']['avg_xg']:.3f} vs "
+            f"{target_stats['avg_xg']:.3f} ({xg_dir}), "
+            f"pass completion {best['stats']['pass_completion_pct']:.1f}% "
+            f"vs {target_stats['pass_completion_pct']:.1f}% ({pc_dir})."
+        )
+
+    return {"target": target, "candidates": candidates, "recommendation": recommendation}
+
+
 def run() -> None:
     engine = get_engine()
     df = fetch_player_features(engine)
@@ -231,6 +339,15 @@ def run() -> None:
         len(df),
         len(rows),
     )
+
+    # Print a sample replacement recommendation so the decision layer is visible
+    # in CLI output during demos and CI logs.
+    sample_pid = int(df.iloc[0]["player_id"])
+    try:
+        rec = find_replacement(engine, sample_pid, top_n=3)
+        log.info("Sample recommendation — %s", rec["recommendation"])
+    except Exception as exc:
+        log.warning("find_replacement sample skipped: %s", exc)
 
 
 if __name__ == "__main__":
