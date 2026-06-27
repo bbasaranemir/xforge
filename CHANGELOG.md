@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.0.1] — 2026-06-27
+
+### Fixed
+- **`mart_pressing_metrics` PPDA formula** — numerator and denominator were inverted (`defensive_actions / passes_allowed`). Standard PPDA is `passes_allowed / defensive_actions` (lower = more aggressive press). Previous formula produced values < 1 for all matches, making every team appear as 'High' pressing intensity.
+- **Schema qualifier missing** — `mart_player_metrics` was referenced without schema prefix in `find_replacement()` (Python) and `queryReplacementCandidates()` (Dart), causing `relation not found` at runtime. Corrected to `analytics_analytics_marts.mart_player_metrics` in all four query strings.
+- **`superset_init.py` schema** — Player xT Ranking and Team Action Summary Superset datasets referenced `analytics_marts.*`; corrected to `analytics_analytics_marts.*`.
+- **HTTP 404 for not-found** — `/api/v1/matches/{id}/summary` and `/api/v1/players/{id}/replacement` returned 200 with `{"error": "..."}` body when the resource was not found. Now returns 404.
+- **`top_n` guard in `find_replacement()`** — `top_n = max(1, top_n)` prevents empty result set on zero or negative input.
+- **Null PPDA preservation** — PPDA value is now `null` (not `0.0`) in the API response when `passes_allowed = 0`, correctly signalling "no data" to consumers.
+- **Notebook `is_goal` null-guard** — `d.get('outcome', {}).get('name')` raised `AttributeError` when `outcome` key existed with value `None`. Changed to `(d.get('outcome') or {}).get('name')`.
+
+---
+
 ## [3.0.0] — 2026-06-26
 
 ### Added
