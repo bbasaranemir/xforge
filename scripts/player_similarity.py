@@ -296,9 +296,7 @@ def find_replacement(engine, player_id: int, top_n: int = 3) -> dict:
     else:
         best = candidates[0]
         xg_dir = "higher" if best["delta"]["avg_xg"] >= 0 else "lower"
-        pc_dir = (
-            "higher" if best["delta"]["pass_completion_pct"] >= 0 else "lower"
-        )
+        pc_dir = "higher" if best["delta"]["pass_completion_pct"] >= 0 else "lower"
         recommendation = (
             f"Replacing {target['player_name']}: best match is {best['player_name']} "
             f"(similarity {best['similarity_score']:.2f}). "
@@ -308,7 +306,11 @@ def find_replacement(engine, player_id: int, top_n: int = 3) -> dict:
             f"vs {target_stats['pass_completion_pct']:.1f}% ({pc_dir})."
         )
 
-    return {"target": target, "candidates": candidates, "recommendation": recommendation}
+    return {
+        "target": target,
+        "candidates": candidates,
+        "recommendation": recommendation,
+    }
 
 
 def run() -> None:
