@@ -203,6 +203,78 @@ Returns up to 10 most similar players by cosine similarity across 12 aggregated 
 
 ---
 
+### GET /api/v1/matches/{id}/summary
+
+Decision-ready match intelligence: was the scoreline fair, which team pressed harder, and who created the most threat?
+
+**Response (200):**
+```json
+{
+  "match_id": 3869685,
+  "home_team": "Barcelona",
+  "away_team": "Real Madrid",
+  "home_score": 4,
+  "away_score": 0,
+  "xg_home": 2.81,
+  "xg_away": 0.43,
+  "xg_diff": 2.38,
+  "pressing_intensity": {
+    "home": {"label": "High",   "ppda": 6.2},
+    "away": {"label": "Medium", "ppda": 11.7}
+  },
+  "key_threats": [
+    {"rank": 1, "player_name": "Lionel Messi",  "team": "Barcelona",  "total_xt": 0.412},
+    {"rank": 2, "player_name": "Luis Suárez",   "team": "Barcelona",  "total_xt": 0.287},
+    {"rank": 3, "player_name": "Andrés Iniesta", "team": "Barcelona", "total_xt": 0.241}
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `xg_diff` | home\_xg − away\_xg. Positive = home team had the better of it on quality chances. |
+| `pressing_intensity.label` | PPDA-derived: **High** < 10 · **Medium** 10–15 · **Low** > 15 |
+| `pressing_intensity.ppda` | Passes allowed per defensive action. Lower = more aggressive press. `null` when insufficient data. |
+| `key_threats` | Top-3 players by cumulative xT (passes + carries into higher-threat zones). |
+
+**Error responses:** 400 (invalid match\_id), 401, 404 (match not found), 429
+
+---
+
+### GET /api/v1/players/{id}/replacement
+
+Returns top-N statistically similar players with per-stat deltas and a plain-English recruitment recommendation. Backed by the pre-computed cosine similarity model (`player_similarity.py`).
+
+**Query params:** `top_n` (default 3, max 10)
+
+**Response (200):**
+```json
+{
+  "target": {
+    "player_id": 5503,
+    "player_name": "Luka Modrić",
+    "position": "CM",
+    "stats": {"avg_xg": 0.042, "pass_completion_pct": 88.3, "avg_xt_per_pass": 0.0041, "total_shots": 47}
+  },
+  "candidates": [
+    {
+      "rank": 1,
+      "player_id": 7234,
+      "player_name": "Toni Kroos",
+      "position": "CM",
+      "similarity_score": 0.943,
+      "stats": {"avg_xg": 0.038, "pass_completion_pct": 91.2, "avg_xt_per_pass": 0.0044, "total_shots": 39},
+      "delta": {"avg_xg": -0.004, "pass_completion_pct": 2.9, "avg_xt_per_pass": 0.0003}
+    }
+  ],
+  "recommendation": "Replacing Luka Modrić: best match is Toni Kroos (similarity 0.94). xG/shot 0.038 vs 0.042 (lower), pass completion 91.2% vs 88.3% (higher)."
+}
+```
+
+**Error responses:** 400 (invalid player\_id or top\_n), 401, 404 (player not found), 429
+
+---
+
 ## What V3 Adds Over V1
 
 | Capability | V1 | V2 | V3 |
@@ -219,6 +291,7 @@ Returns up to 10 most similar players by cosine similarity across 12 aggregated 
 | Recruitment | None | `finishing_quality` metric in mart_player_metrics | Cosine similarity model — top-10 similar players per player |
 | Pressing analytics | None | None | PPDA per team per match with High/Medium/Low label |
 | Pass network | None | None | Player-to-player pass pairs with completion rate |
+| **Decision layer** | **None** | **None** | **`/summary`: xg\_diff + PPDA + key threats · `/replacement`: stat deltas + recommendation string** |
 
 ---
 
@@ -254,6 +327,10 @@ Returns up to 10 most similar players by cosine similarity across 12 aggregated 
 **Hidden gem scouting:** the player similarity model indexes every player on 12 aggregated features (shot profile, pass profile, location, pressure resistance). A scout running `SELECT * FROM player_similarity_scores WHERE player_id = :target ORDER BY rank` receives the 10 most statistically similar players — surfacing affordable alternatives to a transfer target across any provider's dataset.
 
 **Pressing intensity analysis:** `mart_pressing_metrics` computes PPDA per team per match using all three providers' data. A PPDA of 6.2 (High) means the team forced an error or blocked every 6.2 opponent passes — directly comparable across StatsBomb, Opta, and Wyscout feeds without any manual normalisation.
+
+**Post-match decision intelligence:** `GET /api/v1/matches/{id}/summary` delivers three actionable signals in a single API call: `xg_diff` (was the scoreline fair?), `pressing_intensity` per team (PPDA-derived High/Medium/Low), and `key_threats` (top-3 xT contributors). Analysts get a structured JSON verdict instead of raw event rows — the pipeline answers the question, not just provides the data.
+
+**Transfer target replacement:** `GET /api/v1/players/{id}/replacement` queries pre-computed cosine similarity scores and returns top-N candidates with per-stat deltas (xG, pass completion, xT/pass) and a plain-English recommendation string. A scout can surface affordable alternatives to a £60M target with a single HTTP request.
 
 ---
 
@@ -318,8 +395,11 @@ xforge/
 │   ├── Dockerfile                  # Multi-stage AOT compile — ~10 MB image
 │   ├── pubspec.yaml
 │   └── lib/
-│       ├── main.dart               # Shelf HTTP server — POST /ingest, GET /health,
-│       │                           #   GET /api/v1/matches/{id}/xg, GET /api/v1/players/{id}/similar
+│       ├── main.dart               # Shelf HTTP server — POST /ingest, GET /health
+│       │                           #   GET /api/v1/matches/{id}/xg
+│       │                           #   GET /api/v1/matches/{id}/summary  ← xg_diff · PPDA · key threats
+│       │                           #   GET /api/v1/players/{id}/similar
+│       │                           #   GET /api/v1/players/{id}/replacement  ← stat deltas · recommendation
 │       ├── middleware/
 │       │   ├── bearer_auth.dart    # Constant-time Bearer token guard
 │       │   └── rate_limit.dart     # Sliding-window 60 req/min per IP
@@ -329,7 +409,8 @@ xforge/
 │       │   ├── statsbomb_adapter.dart   # 120×80 → UnifiedEvent
 │       │   ├── opta_adapter.dart        # 100×100 → UnifiedEvent + SSRF guard
 │       │   └── wyscout_adapter.dart     # 100×100 → UnifiedEvent  (Wyscout v3) + SSRF guard
-│       └── db/postgres_writer.dart      # Bulk INSERT + queryXgValues + querySimilarPlayers
+│       └── db/postgres_writer.dart      # Bulk INSERT · queryXgValues · querySimilarPlayers
+│                                        # queryMatchSummary · queryReplacementCandidates
 ├── dbt_project/
 │   ├── macros/
 │   │   └── coord_normalise.sql     # normalise_x / normalise_y — single normalisation point
@@ -390,6 +471,13 @@ curl -X POST http://localhost:8090/ingest \
   -H "Content-Type: application/json" \
   -d '{"provider":"statsbomb","match_id":3869685,"competition_id":43}'
 # → {"written":3401}
+
+# After running ML models (player_similarity.py, xt_model.py):
+curl http://localhost:8090/api/v1/matches/3869685/summary
+# → {"xg_diff":2.38,"pressing_intensity":{"home":{"label":"High","ppda":6.2},...},"key_threats":[...]}
+
+curl "http://localhost:8090/api/v1/players/5503/replacement?top_n=3"
+# → {"target":{...},"candidates":[...],"recommendation":"Replacing Luka Modrić: best match is ..."}
 ```
 
 Run the dbt medallion:
@@ -443,10 +531,14 @@ dim_teams ────────┘         ├── xp_value    (XGBoost pas
                             mv_team_xg            (REFRESH CONCURRENTLY)
                             mv_shot_locations
 
+                            player_similarity_scores       (cosine top-10 per player)
+
                             analytics_analytics_marts.*
-                            ├── mart_player_metrics        (avg_xp · finishing_quality)
-                            ├── mart_team_summary          (xG · shot counts)
+                            ├── mart_player_metrics        (avg_xg · avg_xp · finishing_quality)
+                            ├── mart_team_summary          (xG · shot counts per team per match)
                             ├── mart_match_summary         (per-match aggregates)
+                            ├── mart_pressing_metrics      (PPDA · High/Medium/Low per team per match)
+                            ├── mart_pass_network          (player-to-player pass pairs)
                             └── mart_competition_leaderboard (xT per match rank)
 ```
 
